@@ -33,7 +33,9 @@ npm run dev              # http://localhost:5173
 | User  | `/profile`            | Signed in                       | View own profile (redirects to create when missing) |
 | User  | `/profile/create`     | Signed in                       | Complete profile + optional picture |
 | User  | `/profile/edit`       | Signed in                       | Edit profile and picture |
-| User  | `/preferences`, `/matches`, `/connections`, `/messages` | Signed in | Placeholders (later phases) |
+| User  | `/preferences`        | Signed in                       | Preferences, hobbies and quiz (one save) |
+| User  | `/preferences/quiz`   | Signed in                       | Compatibility quiz on its own |
+| User  | `/matches`, `/connections`, `/messages` | Signed in | Placeholders (later phases) |
 | Admin | `/admin/login`        | Visitors                        | Admin login (then live verification) |
 | Admin | `/admin/dashboard`    | Signed-in admins                | Admin dashboard (placeholder) |
 
@@ -58,6 +60,14 @@ Paths are defined once in `src/routes/paths.js`. Access rules live in `src/route
 - **Picture sources:** the gallery or file picker, or **Take a photo**, which uses the in-page camera via `useCamera` (or the phone's native camera). Any image is accepted, and **no face detection** runs.
 - **Upload format:** pictures are sent as `multipart/form-data`; `apiClient` sends `FormData` as-is.
 - **Client-side checks** (type, size, required fields, age range) are for convenience only; the API validates again. Keep `VITE_PROFILE_IMAGE_MAX_SIZE_MB` equal to the backend limit.
+
+## Preferences (Phase 6)
+
+- **Pages:** `pages/user/preferences/` (`PreferencesPage`, `QuizPage`).
+- **Components:** `components/preferences/` (`PreferenceForm`, `HobbiesSelector`, `QuizQuestions`).
+- **Data:** `services/preferenceService.js`.
+- **Data from the API:** option lists, the hobby list and the quiz questions all come from the API (`/preferences/options`, `/hobbies`, `/preferences/quiz`). Nothing is hard-coded in React.
+- **Saving:** one **Save preferences** request carries preferences, `hobbyIds` and `quizAnswers`; the backend saves them in one transaction.
 
 ## Structure
 

@@ -52,6 +52,16 @@ function Dashboard() {
         </section>
       )}
 
+      <section className="card profile-summary">
+        <div>
+          <h2>Matching preferences</h2>
+          <p className="muted">What you are looking for, your hobbies and the compatibility quiz.</p>
+        </div>
+        <Link to={USER_PATHS.PREFERENCES} className="btn">
+          Set preferences
+        </Link>
+      </section>
+
       <p className="badge">Matches, connections and messages arrive in later phases</p>
     </div>
   );

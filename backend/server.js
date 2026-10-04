@@ -16,6 +16,14 @@ if (config.corsOrigins.length === 0) {
   logger.warn('CORS_ORIGIN is empty — browser requests from any origin will be rejected');
 }
 
+// The quiz questionnaire is configuration: fail fast if the file is missing or invalid.
+try {
+  require('./src/services/quizQuestionBank').getQuestionBank();
+} catch (err) {
+  logger.error(err.message);
+  process.exit(1);
+}
+
 const app = require('./src/app');
 
 const server = app.listen(config.port);

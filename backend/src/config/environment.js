@@ -93,6 +93,11 @@ const config = {
     publicBaseUrlConfigured: Boolean(process.env.MEDIA_PUBLIC_BASE_URL),
   },
 
+  quiz: {
+    // JSON file with the compatibility questionnaire (see src/config/quiz-questions.json)
+    questionsFile: path.resolve(__dirname, '../..', process.env.QUIZ_QUESTIONS_FILE || 'src/config/quiz-questions.json'),
+  },
+
   profileImage: {
     maxSizeMb: Number(process.env.PROFILE_IMAGE_MAX_SIZE_MB) || 5,
     // Stored images are resized to fit within this many pixels per side

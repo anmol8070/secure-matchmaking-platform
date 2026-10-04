@@ -1,0 +1,51 @@
+{
+  "version": "sample-1",
+  "status": "sample",
+  "description": "SAMPLE questions for development. The project document does not define the compatibility questionnaire — replace this file (or point QUIZ_QUESTIONS_FILE at another file) once the questions are approved. Keep question ids stable: stored answers reference them.",
+  "questions": [
+    {
+      "id": "weekend_style",
+      "text": "How do you usually like to spend a weekend?",
+      "type": "single_choice",
+      "options": [
+        { "value": "outdoors", "label": "Outdoors and active" },
+        { "value": "social", "label": "Out with friends" },
+        { "value": "home", "label": "Relaxing at home" },
+        { "value": "creative", "label": "On a hobby or creative project" },
+        { "value": "mixed", "label": "A bit of everything" }
+      ]
+    },
+    {
+      "id": "communication_style",
+      "text": "How do you prefer to stay in touch with someone you are getting to know?",
+      "type": "single_choice",
+      "options": [
+        { "value": "daily_messages", "label": "Messages every day" },
+        { "value": "few_times_week", "label": "A few messages a week" },
+        { "value": "calls", "label": "Phone or video calls" },
+        { "value": "in_person", "label": "Meeting in person" }
+      ]
+    },
+    {
+      "id": "core_values",
+      "text": "Which values matter most to you? (choose up to 3)",
+      "type": "multiple_choice",
+      "maxSelections": 3,
+      "options": [
+        { "value": "family", "label": "Family" },
+        { "value": "career", "label": "Career" },
+        { "value": "faith", "label": "Faith" },
+        { "value": "adventure", "label": "Adventure" },
+        { "value": "health", "label": "Health" },
+        { "value": "creativity", "label": "Creativity" },
+        { "value": "community", "label": "Community" }
+      ]
+    },
+    {
+      "id": "ideal_partner",
+      "text": "Describe your ideal partner in a few words.",
+      "type": "text",
+      "maxLength": 300
+    }
+  ]
+}

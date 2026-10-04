@@ -1,8 +1,8 @@
 # Backend — Matchmaking Platform API
 
-Node.js + Express 5 REST API (base API, Phase 3; authentication, Phase 4; profiles, Phase 5). See the [root README](../README.md) for the project overview.
+Node.js + Express 5 REST API (base API, Phase 3; authentication, Phase 4; profiles, Phase 5; preferences, Phase 6). See the [root README](../README.md) for the project overview.
 
-The full architecture is in **[docs/api-architecture.md](docs/api-architecture.md)**, authentication in **[docs/authentication-flow.md](docs/authentication-flow.md)**, profiles in **[docs/profile-management.md](docs/profile-management.md)** and the schema in **[docs/database-schema.md](docs/database-schema.md)**.
+The full architecture is in **[docs/api-architecture.md](docs/api-architecture.md)**, authentication in **[docs/authentication-flow.md](docs/authentication-flow.md)**, profiles in **[docs/profile-management.md](docs/profile-management.md)**, preferences in **[docs/preferences.md](docs/preferences.md)** and the schema in **[docs/database-schema.md](docs/database-schema.md)**.
 
 ## Setup
 
@@ -41,6 +41,7 @@ Settings are read only by `src/config/environment.js`, from `.env`. `.env` is gi
 | `JWT_EXPIRES_IN`, `OTP_*`, `LOGIN_VERIFICATION_*`, `AUTH_RATE_LIMIT_*`, `AUTH_FAILED_ATTEMPTS_MAX`, `DEFAULT_COUNTRY_CODE`, `TRUST_PROXY` | Authentication settings — see `.env.example` |
 | `OTP_PROVIDER` | `dev` keeps codes in a development outbox (`GET /api/v1/dev/otp`). **Production requires a real provider** |
 | `STORAGE_PROVIDER`, `UPLOADS_DIR`, `MEDIA_PUBLIC_BASE_URL`, `PROFILE_IMAGE_MAX_SIZE_MB`, `PROFILE_IMAGE_MAX_DIMENSION` | Profile picture storage and limits. `MEDIA_PUBLIC_BASE_URL` must be https in production |
+| `QUIZ_QUESTIONS_FILE` | Compatibility questionnaire (validated at startup; bundled file = sample questions) |
 
 In production the server exits on startup if the required settings are missing or unsafe.
 
@@ -102,7 +103,8 @@ src/
 | `/api/v1/auth/*` | **Implemented**: `register`, `send-otp`, `verify-otp`, `login`, `login/send-otp`, `login/verify-otp`, `login-verification/complete`, `logout`, `me` |
 | `/api/v1/admin/login` | **Implemented** (admin accounts; live verification follows) |
 | `/api/v1/profile` | **Implemented**: `GET`, `POST`, `PUT /`, `PUT /photo` (multipart `photo`), `DELETE /photo` — own profile only |
-| `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Bearer token required → **501** placeholders |
+| `/api/v1/preferences`, `/api/v1/hobbies` | **Implemented**: preferences (`GET`/`POST`/`PUT`, one transaction with hobbies + quiz), `/options`, `/hobbies`, `/quiz`; hobby catalogue |
+| `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Bearer token required → **501** placeholders |
 | `/api/v1/admin/*` | Admin token required → **501** placeholders |
 | Unknown paths | **404** `API endpoint not found` |
 

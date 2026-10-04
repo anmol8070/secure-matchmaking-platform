@@ -1,9 +1,9 @@
-/** Hobby catalogue and the current user's hobbies.
- * Phase 3: every handler is a 501 placeholder — no business logic yet. */
-const { placeholderController } = require('../utils/notImplemented');
+/** Hobby catalogue. The user's own selection is managed under /preferences/hobbies. */
+const hobbyService = require('../services/hobbyService');
+const { sendSuccess } = require('../utils/apiResponse');
 
-module.exports = placeholderController([
-  'listHobbies',
-  'getMyHobbies',
-  'setMyHobbies',
-]);
+async function listHobbies(req, res) {
+  sendSuccess(res, { data: await hobbyService.listActive() });
+}
+
+module.exports = { listHobbies };

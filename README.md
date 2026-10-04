@@ -100,6 +100,7 @@ cp .env.example .env
 | `STORAGE_PROVIDER`, `UPLOADS_DIR` | Profile picture storage (`local` = disk, served at `/media`) | `local`, `uploads` |
 | `MEDIA_PUBLIC_BASE_URL` | Public origin for picture URLs (https in production) | `http://localhost:5000` |
 | `PROFILE_IMAGE_MAX_SIZE_MB`, `PROFILE_IMAGE_MAX_DIMENSION` | Upload limit; stored image size | `5`, `1024` |
+| `QUIZ_QUESTIONS_FILE` | Compatibility questionnaire file (sample questions until approved) | `src/config/quiz-questions.json` |
 
 Generate a strong secret with:
 
@@ -192,11 +193,12 @@ All endpoints are versioned under `/api/v1`. Responses use one envelope:
 | `/api/v1/auth` | **Implemented (Phase 4)** — register, OTP, password/OTP login, live verification, logout, `/me` |
 | `/api/v1/admin/login` | Implemented (admins only, followed by live verification) |
 | `/api/v1/profile` | **Implemented (Phase 5)** — create, view, edit own profile; upload/replace/remove profile picture (Bearer token) |
-| `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
+| `/api/v1/preferences`, `/api/v1/hobbies` | **Implemented (Phase 6)** — matching preferences, hobby catalogue and selection, compatibility quiz answers (Bearer token) |
+| `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
 | `/admin/*` | Require an **admin** token; `501` placeholders |
 | Anything else | `404 API endpoint not found` |
 
-The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**; profiles and profile pictures in **[backend/docs/profile-management.md](backend/docs/profile-management.md)**.
+The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**; profiles and profile pictures in **[backend/docs/profile-management.md](backend/docs/profile-management.md)**; preferences, hobbies and quiz in **[backend/docs/preferences.md](backend/docs/preferences.md)**.
 
 ### Trying the login flow locally
 
@@ -206,10 +208,11 @@ The endpoint list, error codes and middleware are documented in [backend/docs/ap
 4. For the admin panel, promote a registered account with `npm run admin:promote -- <email>` (in `backend/`), then use http://localhost:5173/admin/login.
 
 5. After login, open **Profile** to complete your profile and add a picture from your gallery, files or camera (any image — it does not need a face).
+6. Open **Preferences** to set what you are looking for, choose your hobbies and answer the (sample) compatibility quiz.
 
 **Profile Picture and Login Verification Photo are independent features.** The verification photo is checked in the browser for face presence only and never leaves the device; the profile picture is uploaded, stored and displayed, and is never compared with anything.
 
-A Postman collection (43 requests, 84 assertions — authentication and profiles) is at `backend/docs/postman/matchmaking-platform.postman_collection.json`. Run it from the `backend` folder while the server is running:
+A Postman collection (61 requests, 122 assertions — authentication, profiles and preferences) is at `backend/docs/postman/matchmaking-platform.postman_collection.json`. Run it from the `backend` folder while the server is running:
 
 ```bash
 npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman
@@ -241,6 +244,7 @@ project/
 │   │   ├── api-architecture.md
 │   │   ├── authentication-flow.md
 │   │   ├── profile-management.md
+│   │   ├── preferences.md
 │   │   ├── database-schema.md
 │   │   └── postman/
 │   ├── scripts/             db-create.js, db-reset.js
@@ -273,7 +277,7 @@ project/
 
 ## 13. Current development phase
 
-**Phase 5: Profile Creation, Edit, View & Profile Picture (complete)**
+**Phase 6: Preferences, Hobbies & Quiz Answers (complete)**
 
 | Phase | Scope                                           | Status      |
 | ----- | ----------------------------------------------- | ----------- |
@@ -282,4 +286,5 @@ project/
 | 3     | Backend project and API structure (base REST API) | ✅ Complete |
 | 4     | Registration, OTP, login, live verification & authorization | ✅ Complete |
 | 5     | Profile creation, edit, view & profile picture  | ✅ Complete |
-| 6+    | Preferences, matching, recommendations, connections, chat, video, admin, notifications | Planned |
+| 6     | Preferences, hobbies & quiz answers             | ✅ Complete |
+| 7+    | Compatibility engine, recommendations, connections, chat, video, admin, notifications | Planned |

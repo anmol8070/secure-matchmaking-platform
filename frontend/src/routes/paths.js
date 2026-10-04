@@ -10,6 +10,7 @@ export const USER_PATHS = {
   PROFILE_CREATE: '/profile/create',
   PROFILE_EDIT: '/profile/edit',
   PREFERENCES: '/preferences',
+  PREFERENCES_QUIZ: '/preferences/quiz',
   MATCHES: '/matches',
   CONNECTIONS: '/connections',
   MESSAGES: '/messages',
