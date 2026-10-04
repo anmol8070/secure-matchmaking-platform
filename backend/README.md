@@ -1,8 +1,8 @@
 # Backend — Matchmaking Platform API
 
-Node.js + Express 5 REST API (base API, Phase 3). See the [root README](../README.md) for the project overview.
+Node.js + Express 5 REST API (base API, Phase 3; authentication, Phase 4). See the [root README](../README.md) for the project overview.
 
-The full architecture is in **[docs/api-architecture.md](docs/api-architecture.md)** and the schema in **[docs/database-schema.md](docs/database-schema.md)**.
+The full architecture is in **[docs/api-architecture.md](docs/api-architecture.md)**, authentication in **[docs/authentication-flow.md](docs/authentication-flow.md)** and the schema in **[docs/database-schema.md](docs/database-schema.md)**.
 
 ## Setup
 
@@ -37,7 +37,9 @@ Settings are read only by `src/config/environment.js`, from `.env`. `.env` is gi
 | `DB_CLIENT` | `postgres` or `mysql` (also used for MariaDB) |
 | `DATABASE_URL` **or** `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Database connection. **Required in production** |
 | `DB_POOL_MIN`, `DB_POOL_MAX`, `DB_TEST_DATABASE` | Optional |
-| `JWT_SECRET`, `OTP_EXPIRY_MINUTES` | Placeholders until Phase 4 |
+| `JWT_SECRET`, `OTP_SECRET` | Random 32+ character secrets. **Required in production**; outside production a temporary secret is generated if missing |
+| `JWT_EXPIRES_IN`, `OTP_*`, `LOGIN_VERIFICATION_*`, `AUTH_RATE_LIMIT_*`, `AUTH_FAILED_ATTEMPTS_MAX`, `DEFAULT_COUNTRY_CODE`, `TRUST_PROXY` | Authentication settings — see `.env.example` |
+| `OTP_PROVIDER` | `dev` keeps codes in a development outbox (`GET /api/v1/dev/otp`). **Production requires a real provider** |
 
 In production the server exits on startup if the required settings are missing or unsafe.
 
@@ -70,6 +72,7 @@ Schema changes always go through a **new** migration in `src/db/migrations`. Nev
 | `npm run db:rollback` / `db:rollback:all` | Undo the last batch / every migration |
 | `npm run db:seed` | Run seeds (reference hobbies) |
 | `npm run db:reset` | Rollback all + migrate + seed (refused in production) |
+| `npm run admin:promote -- <email or mobile>` | Give an existing, active account the admin role |
 
 Postman: import `docs/postman/matchmaking-platform.postman_collection.json`, or run `npx newman run docs/postman/matchmaking-platform.postman_collection.json` while the server is running.
 
@@ -95,7 +98,10 @@ src/
 | Route group | Phase 3 behaviour |
 | --- | --- |
 | `GET /api/v1/health` | Implemented |
-| `/api/v1/auth`, `/profile`, `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback`, `/admin` | Planned endpoints return **501** `This module will be implemented in a later development phase` |
+| `/api/v1/auth/*` | **Implemented**: `register`, `send-otp`, `verify-otp`, `login`, `login/send-otp`, `login/verify-otp`, `login-verification/complete`, `logout`, `me` |
+| `/api/v1/admin/login` | **Implemented** (admin accounts; live verification follows) |
+| `/profile`, `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Bearer token required → **501** placeholders |
+| `/api/v1/admin/*` | Admin token required → **501** placeholders |
 | Unknown paths | **404** `API endpoint not found` |
 
 ### Response format

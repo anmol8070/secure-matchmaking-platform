@@ -33,6 +33,18 @@ class BaseModel {
     return { [this.primaryKey]: key };
   }
 
+  /** Inserts one row and returns its generated primary key (single-column keys only). */
+  async insertAndGetId(row, trx) {
+    const query = this.query(trx);
+    // PostgreSQL needs RETURNING; MySQL has none and returns [insertId].
+    if (query.client.dialect === 'postgresql') {
+      const [inserted] = await query.insert(row, [this.primaryKey]);
+      return inserted[this.primaryKey];
+    }
+    const [insertId] = await query.insert(row);
+    return insertId;
+  }
+
   async findByPk(key, trx) {
     const row = await this.query(trx).where(this.keyFilter(key)).first();
     return this.parseRow(row);

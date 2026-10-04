@@ -22,28 +22,42 @@ npm run dev              # http://localhost:5173
 
 ## Routes
 
-| Panel | Path               | Page                     |
-| ----- | ------------------ | ------------------------ |
-| User  | `/`                | Landing / Home           |
-| User  | `/register`        | Registration             |
-| User  | `/verify-otp`      | OTP Verification         |
-| User  | `/login`           | Login                    |
-| Admin | `/admin`           | Redirects to dashboard   |
-| Admin | `/admin/login`     | Admin Login              |
-| Admin | `/admin/dashboard` | Admin Dashboard          |
+| Panel | Path                  | Access                          | Page |
+| ----- | --------------------- | ------------------------------- | ---- |
+| User  | `/`                   | Public                          | Landing / Home |
+| User  | `/register`           | Visitors                        | Registration (email/mobile + password) |
+| User  | `/otp-verification`   | Visitors                        | Account verification with OTP (resend with cooldown) |
+| User  | `/login`              | Visitors                        | Login with password **or** OTP |
+| User  | `/login-verification` | After credentials/OTP succeeded | **Live camera face-presence check** (`LoginVerification.jsx`) |
+| User  | `/dashboard`          | Signed in                       | Dashboard |
+| User  | `/profile`, `/preferences`, `/matches`, `/connections`, `/messages` | Signed in | Placeholders (later phases) |
+| Admin | `/admin/login`        | Visitors                        | Admin login (then live verification) |
+| Admin | `/admin/dashboard`    | Signed-in admins                | Admin dashboard (placeholder) |
 
-Paths are defined once in `src/routes/paths.js`. User pages render inside `UserLayout`; admin pages render inside `AdminLayout`.
+Paths are defined once in `src/routes/paths.js`. Access rules live in `src/routes/guards.jsx` (`ProtectedRoute`, `AdminRoute`, `VerificationRoute`, `GuestRoute`).
+
+## Authentication
+
+- **One central state:** `src/context/AuthContext.jsx` + `authReducer.js`, read through `useAuth()`. The states are: logged out, authentication pending, credentials verified, live verification pending, fully authenticated, and session expired. Components never keep their own copy.
+- **Two-step login:** the password/OTP step returns a temporary verification token, kept in memory only. The access token is received only after live verification, and is stored in `sessionStorage` (`services/tokenStore.js`).
+- **Bearer header:** `apiClient` adds `Authorization: Bearer …` to requests made with `{ auth: true }`. A 401 moves the app to *session expired*.
+- **Live verification:** `hooks/useCamera.js` handles `getUserMedia` and every error case (permission denied, no camera, camera busy, unsupported or insecure browser). `services/faceDetectionService.js` counts faces with MediaPipe's BlazeFace model in the browser.
+  - Only `{ face_detected, face_count, confidence, detector }` is sent to the API.
+  - The captured frame is cleared immediately and is never uploaded or used as a profile picture.
+- **Detector files:** the MediaPipe runtime and model load from public CDNs on first use. Override them with `VITE_MEDIAPIPE_WASM_URL` / `VITE_FACE_DETECTOR_MODEL_URL` to self-host. The camera needs HTTPS (or localhost).
+- **Development only:** the "Show development OTP" button (`components/auth/DevOtpHint.jsx`, `services/devService.js`) reads the backend's dev OTP outbox. Vite removes it from production builds.
 
 ## Structure
 
 ```
 src/
-├── components/   Reusable UI (components/common/…)
+├── components/   Reusable UI (common/, auth/)
 ├── pages/        user/ and admin/ page components
 ├── layouts/      UserLayout, AdminLayout
-├── routes/       AppRoutes.jsx, paths.js
-├── services/     apiClient.js and per-resource API modules
-├── hooks/        Custom hooks (e.g. useApiHealth)
+├── routes/       AppRoutes.jsx, guards.jsx, paths.js
+├── services/     apiClient, authService, tokenStore, faceDetectionService, devService
+├── context/      AuthContext + authReducer (central auth state)
+├── hooks/        useAuth, useCamera, useApiHealth
 ├── utils/        Constants and helpers
 ├── assets/       Images, icons
 ├── styles/       Global CSS

@@ -1,4 +1,4 @@
-/** All models, one per table created in Phase 2. */
+/** All models, one per table (Phase 2 tables + Phase 4 otp_codes and user_sessions). */
 module.exports = {
   User: require('./userModel'),
   Profile: require('./profileModel'),
@@ -13,4 +13,6 @@ module.exports = {
   Block: require('./blockModel'),
   ActivityFeedback: require('./activityFeedbackModel'),
   LoginVerification: require('./loginVerificationModel'),
+  OtpCode: require('./otpCodeModel'),
+  UserSession: require('./userSessionModel'),
 };

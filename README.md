@@ -16,7 +16,7 @@ The matching and recommendation logic is kept independent of the frontend, so sc
 | Frontend           | React 19, React Router 7, Vite, JavaScript, HTML, CSS         |
 | Backend            | Node.js, Express 5, REST APIs                                 |
 | Database           | PostgreSQL **or** MySQL/MariaDB via Knex (selected with `DB_CLIENT`) |
-| Authentication     | OTP + JWT/session *(Phase 4)*                                 |
+| Authentication     | Password (scrypt) or OTP, live face-presence check (MediaPipe, in browser), JWT sessions with server-side revocation |
 | Real-time          | Socket.IO / WebSocket *(later phase)*                         |
 | Video              | WebRTC *(later phase)*                                        |
 | Recommendation     | Separate backend service/module *(later phase)*               |
@@ -89,8 +89,14 @@ cp .env.example .env
 | `DB_PASSWORD`   | Database password                                               |                           |
 | `DB_POOL_MIN` / `DB_POOL_MAX` | Connection pool size                              | `0` / `10`                |
 | `DB_TEST_DATABASE` | Database for `npm run test:db`. Its tables are rebuilt on every run. | `matchmaking_db_test` (default: `<DB_DATABASE>_test`) |
-| `JWT_SECRET`    | Token signing secret, used from Phase 4. Use a long random value. |                         |
-| `OTP_EXPIRY_MINUTES` | OTP validity window, used from Phase 4                     | `10`                      |
+| `JWT_SECRET` / `OTP_SECRET` | Token signing / OTP hashing secrets. Random, 32+ characters (required in production) | |
+| `JWT_EXPIRES_IN` | Access-token lifetime | `1d` |
+| `OTP_LENGTH`, `OTP_EXPIRY_MINUTES`, `OTP_MAX_ATTEMPTS` | OTP rules | `6`, `5`, `5` |
+| `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_SENDS_PER_HOUR` | OTP resend limits | `60`, `5` |
+| `OTP_PROVIDER` | `dev` = development outbox (refused in production) | `dev` |
+| `LOGIN_VERIFICATION_EXPIRY_MINUTES`, `LOGIN_VERIFICATION_MAX_ATTEMPTS` | Live verification session | `5`, `5` |
+| `AUTH_RATE_LIMIT_*`, `AUTH_FAILED_ATTEMPTS_MAX` | Rate limits | see `.env.example` |
+| `DEFAULT_COUNTRY_CODE`, `TRUST_PROXY` | Mobile prefix; reverse-proxy hops | `+91`, off |
 
 Generate a strong secret with:
 
@@ -177,15 +183,27 @@ All endpoints are versioned under `/api/v1`. Responses use one envelope:
 { "success": false, "message": "Something went wrong", "errors": [] }
 ```
 
-| Route group | Status in Phase 3 |
+| Route group | Status |
 | --- | --- |
-| `/api/v1/health` | Implemented |
-| `/api/v1/auth`, `/profile`, `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback`, `/admin` | Planned endpoints registered. Each returns `501 This module will be implemented in a later development phase` |
+| `/api/v1/health` | Implemented (public) |
+| `/api/v1/auth` | **Implemented (Phase 4)** — register, OTP, password/OTP login, live verification, logout, `/me` |
+| `/api/v1/admin/login` | Implemented (admins only, followed by live verification) |
+| `/profile`, `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
+| `/admin/*` | Require an **admin** token; `501` placeholders |
 | Anything else | `404 API endpoint not found` |
 
-The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md).
+The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**.
 
-A Postman collection (20 requests with test assertions) is at `backend/docs/postman/matchmaking-platform.postman_collection.json`. Run it from the `backend` folder while the server is running:
+### Trying the login flow locally
+
+1. Start the backend (`npm run dev`) and frontend (`npm run dev`), then open http://localhost:5173/register.
+2. Register. With `OTP_PROVIDER=dev` the code is not emailed; use **Show development OTP** on the verification page (or `GET /api/v1/dev/otp?destination=<email>`).
+3. Log in. The browser asks for camera permission; take a photo with exactly one face visible. Login completes only after this step.
+4. For the admin panel, promote a registered account with `npm run admin:promote -- <email>` (in `backend/`), then use http://localhost:5173/admin/login.
+
+**Profile Picture and Login Verification Photo are independent features.** The verification photo is checked in the browser for face presence only and never leaves the device.
+
+A Postman collection (32 requests, 60 assertions — the full authentication flow) is at `backend/docs/postman/matchmaking-platform.postman_collection.json`. Run it from the `backend` folder while the server is running:
 
 ```bash
 npx newman run docs/postman/matchmaking-platform.postman_collection.json
@@ -215,6 +233,7 @@ project/
 │   │   └── routes.js        /api/v1 route registry
 │   ├── docs/
 │   │   ├── api-architecture.md
+│   │   ├── authentication-flow.md
 │   │   ├── database-schema.md
 │   │   └── postman/
 │   ├── scripts/             db-create.js, db-reset.js
@@ -247,12 +266,13 @@ project/
 
 ## 13. Current development phase
 
-**Phase 3: Backend Project and API Structure (complete)**
+**Phase 4: Registration, OTP, Login & Authorization (complete)**
 
 | Phase | Scope                                           | Status      |
 | ----- | ----------------------------------------------- | ----------- |
 | 1     | Project setup                                   | ✅ Complete |
 | 2     | Database schema and relationships               | ✅ Complete |
 | 3     | Backend project and API structure (base REST API) | ✅ Complete |
-| 4     | Registration, OTP, login & authorization        | Next        |
-| 5+    | Live presence verification, profiles, matching, recommendations, connections, chat, video, admin, notifications | Planned |
+| 4     | Registration, OTP, login, live verification & authorization | ✅ Complete |
+| 5     | Profile creation, edit, view & profile picture  | Next        |
+| 6+    | Preferences, matching, recommendations, connections, chat, video, admin, notifications | Planned |

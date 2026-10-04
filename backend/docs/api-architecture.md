@@ -1,6 +1,6 @@
 # API Architecture
 
-Backend architecture of the Secure Social Networking and Digital Matchmaking Platform, as set up in Phase 3 (base REST API). For the database design see [database-schema.md](database-schema.md).
+Backend architecture of the Secure Social Networking and Digital Matchmaking Platform: the base REST API (Phase 3) plus authentication and authorization (Phase 4). For the database design see [database-schema.md](database-schema.md); for registration, OTP, login and live verification see [authentication-flow.md](authentication-flow.md).
 
 ## 1. Backend architecture
 
@@ -93,10 +93,10 @@ A breaking change will add `/api/v2` as a new router mounted beside v1, so exist
 
 `src/routes.js` mounts each module router. Every module has its own file in `src/routes/`.
 
-| Prefix | Planned endpoints (Phase 3: all return 501 except health) |
+| Prefix | Endpoints (✅ implemented — everything else returns 501 until its phase) |
 | --- | --- |
-| `/health` | `GET /` — **implemented** |
-| `/auth` | `POST /register`, `POST /otp/send`, `POST /otp/verify`, `POST /login`, `POST /login/verification` (live presence result), `POST /logout`, `GET /me` |
+| `/health` | ✅ `GET /` (public) |
+| `/auth` | ✅ `POST /register`, `POST /send-otp`, `POST /verify-otp`, `POST /login`, `POST /login/send-otp`, `POST /login/verify-otp`, `POST /login-verification/complete` (live presence result → JWT) — public; `POST /logout`, `GET /me` — Bearer token |
 | `/profile` | `GET /`, `POST /`, `PUT /`, `PUT /photo`, `DELETE /photo`, `GET /:userId` |
 | `/preferences` | `GET /`, `PUT /` |
 | `/hobbies` | `GET /`, `GET /me`, `PUT /me` |
@@ -107,9 +107,9 @@ A breaking change will add `/api/v2` as a new router mounted beside v1, so exist
 | `/reports` | `POST /`, `GET /` |
 | `/blocks` | `GET /`, `POST /`, `DELETE /:userId` |
 | `/feedback` | `POST /`, `GET /` |
-| `/admin` | `POST /login`, `GET /dashboard`, `GET /users`, `GET /users/:userId`, `PATCH /users/:userId/status`, `GET /reports`, `PATCH /reports/:reportId`, `GET /activity`, `GET /monitoring` |
+| `/admin` | ✅ `POST /login` (public, admins only); admin role required for: `GET /dashboard`, `GET /users`, `GET /users/:userId`, `PATCH /users/:userId/status`, `GET /reports`, `PATCH /reports/:reportId`, `GET /activity`, `GET /monitoring` |
 
-Planned endpoints return **HTTP 501**:
+Every module except `/health`, `/auth` and `/admin/login` requires a valid access token (`requireAuth`, applied in `routes.js`); `/admin/*` additionally requires `role = admin`. Planned endpoints of authorised requests return **HTTP 501**:
 
 ```json
 { "success": false, "message": "This module will be implemented in a later development phase" }
@@ -118,6 +118,8 @@ Planned endpoints return **HTTP 501**:
 Paths that are not planned return 404, even inside a module (for example `GET /api/v1/auth/unknown`).
 
 Path parameters such as `:userId` are already validated (positive integer → otherwise 422) before the 501.
+
+In development (`NODE_ENV` not production and `OTP_PROVIDER=dev`) one extra route is mounted: `GET /api/v1/dev/otp?destination=…`, which reads the development OTP outbox. It is never mounted in production.
 
 ## 5. Controller layer
 
@@ -175,7 +177,14 @@ Registered in `app.js`, in this order:
 | 6 | `notFound` | `404 API endpoint not found` |
 | 7 | `errorHandler` | Central error formatting |
 
-Authentication (`requireAuth`) and authorization (`requireRole('admin')`) middleware will be added in Phase 4. Rate limiting for OTP and login endpoints will be added at the same time.
+Route-level middleware (Phase 4):
+
+| Middleware | File | Purpose |
+| --- | --- | --- |
+| `requireAuth` | `middleware/authMiddleware.js` | Bearer JWT → checks signature, expiry, server-side session (not revoked) and active account; sets `req.user`, `req.auth` |
+| `requireRole(...roles)` | `middleware/roleMiddleware.js` | Role-based authorization (`403` for the wrong role) |
+| `authLimiter` | `middleware/rateLimiter.js` | All `/auth` requests per IP |
+| `failedAttemptLimiter` | `middleware/rateLimiter.js` | Failed password/OTP/verification checks per IP + account (no account lockout) |
 
 ## 8. Validation layer
 
@@ -220,7 +229,7 @@ All errors reach `middleware/errorHandler.js`, so controllers contain no error-f
 | Source | Status | Message |
 | --- | --- | --- |
 | `ApiError.badRequest` / malformed JSON | 400 | given / `Malformed JSON in request body` |
-| `ApiError.unauthorized`, JWT errors (Phase 4) | 401 | `Authentication required` / `Invalid or expired token` |
+| `ApiError.unauthorized`, invalid/expired/revoked tokens, bad credentials or OTP | 401 | `Authentication required` / `Invalid or expired token` / `Invalid credentials` / `Invalid or expired OTP` |
 | `ApiError.forbidden`, disallowed CORS origin | 403 | `You do not have permission…` / `Origin not allowed by CORS policy` |
 | Unknown endpoint | 404 | `API endpoint not found` |
 | `ApiError.conflict`, DB unique / foreign-key / restrict violation | 409 | Generic conflict message |
@@ -270,10 +279,18 @@ Read only by `config/environment.js`; template in `.env.example`.
 | `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | one of these two | — | Individual settings |
 | `DB_POOL_MIN` / `DB_POOL_MAX` | no | `0` / `10` | Pool size |
 | `DB_TEST_DATABASE` | no | `<DB_DATABASE>_test` | Used by `npm run test:db` |
-| `JWT_SECRET` | from Phase 4 | — | Token signing secret |
-| `OTP_EXPIRY_MINUTES` | from Phase 4 | `10` | OTP validity |
+| `TRUST_PROXY` | no | off | Hop count/subnet of a reverse proxy so rate limits see client IPs |
+| `JWT_SECRET` | **production** | — | Access-token signing key (32+ random chars) |
+| `JWT_EXPIRES_IN` | no | `1d` | Access-token lifetime |
+| `OTP_SECRET` | **production** | — | HMAC key for stored OTP hashes (32+ random chars) |
+| `OTP_LENGTH`, `OTP_EXPIRY_MINUTES`, `OTP_MAX_ATTEMPTS` | no | `6`, `5`, `5` | OTP rules |
+| `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_SENDS_PER_HOUR` | no | `60`, `5` | OTP resend limits |
+| `OTP_PROVIDER` | **production** (not `dev`) | `dev` | OTP delivery provider |
+| `LOGIN_VERIFICATION_EXPIRY_MINUTES`, `LOGIN_VERIFICATION_MAX_ATTEMPTS` | no | `5`, `5` | Live verification session |
+| `AUTH_RATE_LIMIT_WINDOW_MINUTES`, `AUTH_RATE_LIMIT_MAX`, `AUTH_FAILED_ATTEMPTS_MAX` | no | `15`, `100`, `10` | Rate limits |
+| `DEFAULT_COUNTRY_CODE` | no | `+91` | Prefix for 10-digit mobile numbers |
 
-**Startup checks:** in production, `server.js` refuses to start (exit code 1) if `CORS_ORIGIN` is missing or `*`, or if no database is configured.
+**Startup checks:** in production, `server.js` refuses to start (exit code 1) if `CORS_ORIGIN` is missing or `*`, if no database is configured, if `JWT_SECRET`/`OTP_SECRET` are missing, placeholders or shorter than 32 characters, or if `OTP_PROVIDER=dev`.
 
 ## 13. Security baseline
 
@@ -287,14 +304,14 @@ Read only by `config/environment.js`; template in `.env.example`.
   - The logger redacts metadata keys matching password, secret, token, OTP, authorization, cookie, JWT, API key, message, image, photo, frame or selfie.
   - The database password is never logged.
 - **Privacy by design:** login verification never handles images, and the profile photo is unrelated to verification.
-- **Deferred to Phase 4:** authentication, authorization, rate limiting, and stricter `helmet` settings for production behind a proxy (`trust proxy`).
+- **Authentication (Phase 4):** scrypt password hashing, HMAC-hashed OTPs with expiry/attempt/resend limits, live presence verification before any access token, revocable JWT sessions, role-based authorization and rate limiting — see [authentication-flow.md](authentication-flow.md#11-security-rules).
+- **Proxies:** set `TRUST_PROXY` when running behind a load balancer so rate limits see real client IPs.
 
 ## 14. Future modules
 
 | Phase | Builds on |
 | --- | --- |
-| 4 — Registration, OTP, login & authorization | `authRoutes`, `authService`, `authValidator`, `users`, `requireAuth` / `requireRole` middleware |
-| Live presence verification | `POST /auth/login/verification`, `verificationService`, `login_verifications` |
+| 4 — Registration, OTP, login & authorization | ✅ Done: `authService`, `otpService`, `sessionService`, `verificationService`, `requireAuth` / `requireRole` |
 | Profiles & profile picture | `profileRoutes`, `profileService`, multipart upload middleware |
 | Preferences & hobbies | `preferenceService`, `hobbyService` |
 | Matching & recommendation | `matchingService` → `matches`; `recommendationService` + `activity_feedback` |
@@ -315,4 +332,4 @@ Routes, middleware and error handling stay as they are.
 | --- | --- |
 | `npm test` | Unit and API tests, no database needed. Covers: health, versioning, 404, every placeholder endpoint (501), validation (422), malformed and oversized bodies, CORS (allowed, preflight, blocked, `*`), response format, the error handler (all status mappings, DB error translation, production hiding), environment loading and production checks, logger redaction, architecture rules, and the real `server.js` starting up |
 | `npm run test:db` | Against a real database: connection module, models mapped to tables, enum constants matching the CHECK constraints, and the full Phase 2 schema suite |
-| Postman / Newman | `docs/postman/matchmaking-platform.postman_collection.json` — 20 requests, 42 assertions. Run with `npx newman run docs/postman/matchmaking-platform.postman_collection.json` while the server is running |
+| Postman / Newman | `docs/postman/matchmaking-platform.postman_collection.json` — 32 requests, 60 assertions covering the full authentication flow (needs `OTP_PROVIDER=dev`). Run with `npx newman run docs/postman/matchmaking-platform.postman_collection.json` while the server is running |

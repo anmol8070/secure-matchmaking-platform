@@ -2,8 +2,15 @@
 export const USER_PATHS = {
   HOME: '/',
   REGISTER: '/register',
-  VERIFY_OTP: '/verify-otp',
+  OTP_VERIFICATION: '/otp-verification',
   LOGIN: '/login',
+  LOGIN_VERIFICATION: '/login-verification',
+  DASHBOARD: '/dashboard',
+  PROFILE: '/profile',
+  PREFERENCES: '/preferences',
+  MATCHES: '/matches',
+  CONNECTIONS: '/connections',
+  MESSAGES: '/messages',
 };
 
 export const ADMIN_PATHS = {

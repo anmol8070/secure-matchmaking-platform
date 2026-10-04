@@ -4,6 +4,7 @@
  * When a value is added, add a migration that updates the CHECK constraint too.
  */
 module.exports = Object.freeze({
+  ROLES: Object.freeze({ USER: 'user', ADMIN: 'admin' }),
   USER_ROLES: Object.freeze(['user', 'admin']),
   USER_STATUSES: Object.freeze([
     'pending_verification',

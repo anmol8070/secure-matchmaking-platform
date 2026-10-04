@@ -1,6 +1,6 @@
 # Database Schema
 
-Database design for the Secure Social Networking and Digital Matchmaking Platform. This file describes Phase 2. The migrations in `backend/src/db/migrations` are the source of truth.
+Database design for the Secure Social Networking and Digital Matchmaking Platform (Phase 2 schema + Phase 4 authentication tables). The migrations in `backend/src/db/migrations` are the source of truth.
 
 ## 1. Database type
 
@@ -46,6 +46,9 @@ erDiagram
     users ||--o{ activity_feedback : "acts"
     users |o--o{ activity_feedback : "is target"
     users ||--o{ login_verifications : "verifies"
+    users ||--o{ otp_codes : "receives"
+    users ||--o{ user_sessions : "signs in"
+    login_verifications |o--o{ user_sessions : "completed"
 
     users {
         bigint user_id PK
@@ -165,6 +168,30 @@ erDiagram
         int attempt_count
         timestamptz attempted_at
         timestamptz verified_at
+        varchar token_hash UK "SHA-256 of temporary token"
+        timestamptz expires_at
+        varchar auth_method "password | otp"
+        timestamptz created_at
+    }
+    otp_codes {
+        bigint otp_id PK
+        bigint user_id FK
+        varchar purpose "registration | login"
+        varchar channel "email | mobile"
+        varchar otp_hash "HMAC-SHA256"
+        timestamptz expires_at
+        int attempts
+        varchar status "active | verified | invalidated"
+        timestamptz verified_at
+        timestamptz created_at
+    }
+    user_sessions {
+        bigint session_id PK
+        bigint user_id FK
+        varchar token_id UK "JWT jti"
+        bigint login_verification_id FK "nullable"
+        timestamptz expires_at
+        timestamptz revoked_at
         timestamptz created_at
     }
 ```
@@ -184,6 +211,9 @@ erDiagram
 | users → blocks | 1 : N (twice) | `blocker_id`, `blocked_id` |
 | users → activity_feedback | 1 : N (twice) | `user_id`, `target_user_id` (nullable) |
 | users → login_verifications | 1 : N | `login_verifications.user_id` |
+| users → otp_codes | 1 : N | `otp_codes.user_id` (Phase 4) |
+| users → user_sessions | 1 : N | `user_sessions.user_id` (Phase 4) |
+| login_verifications → user_sessions | 1 : 0..N | `user_sessions.login_verification_id` (Phase 4) |
 
 Profiles and preferences are optional (0..1) because a user row is created at registration, before the profile is completed.
 
@@ -386,16 +416,54 @@ Live human/face **presence** checks at login: Live camera → face detected → 
 | verification_id | bigint | no | auto | **PK** |
 | user_id | bigint | no | | **FK** → users (CASCADE) |
 | verification_status | varchar(20) | no | `pending` | `pending` \| `passed` \| `failed` \| `expired` |
-| detection_result | json/jsonb | yes | | Detector output only, e.g. `{"face_detected":true,"faces_count":1,"confidence":0.97}` |
+| detection_result | json/jsonb | yes | | Detector output only: `{"face_detected":true,"face_count":1,"confidence":0.97,"detector":"…","outcome":"passed"}` |
 | attempt_count | int | no | 0 | At least 0 |
 | attempted_at | timestamp | yes | | Most recent attempt |
 | verified_at | timestamp | yes | | Required when status is `passed` |
+| token_hash | varchar(64) | yes | | **UNIQUE**. SHA-256 of the temporary verification token issued after credentials/OTP succeed (Phase 4) |
+| expires_at | timestamp | yes | | Session expiry (`LOGIN_VERIFICATION_EXPIRY_MINUTES`) (Phase 4) |
+| auth_method | varchar(20) | yes | | `password` \| `otp` (Phase 4) |
 | created_at | timestamp | no | now | |
 
 Privacy rules:
 - There is **no image, photo or embedding column**. The captured frame is processed and discarded.
 - There is **no relationship** to `profiles.profile_photo_url`.
 - An integration test fails if a column named like photo, image, picture or embedding is ever added.
+
+### 4.14 otp_codes (Phase 4)
+
+One-time passwords for account verification and OTP login. Only an HMAC of the code is stored.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| otp_id | bigint | no | auto | **PK** |
+| user_id | bigint | no | | **FK** → users (CASCADE) |
+| purpose | varchar(20) | no | | `registration` \| `login` |
+| channel | varchar(10) | no | | `email` \| `mobile` |
+| otp_hash | varchar(64) | no | | HMAC-SHA256(code, `OTP_SECRET`) |
+| expires_at | timestamp | no | | Now + `OTP_EXPIRY_MINUTES` |
+| attempts | int | no | 0 | Failed verification attempts (≥ 0) |
+| status | varchar(20) | no | `active` | `active` \| `verified` \| `invalidated` (new code issued, too many attempts or expired) |
+| verified_at | timestamp | yes | | Required when status is `verified` |
+| created_at | timestamp | no | now | Also used for resend cooldown and hourly cap |
+
+Index `idx_otp_codes_lookup (user_id, purpose, channel, created_at)`.
+
+### 4.15 user_sessions (Phase 4)
+
+One row per issued access token, so logout and suspension take effect immediately.
+
+| Column | Type | Null | Notes |
+| --- | --- | --- | --- |
+| session_id | bigint | no | **PK** |
+| user_id | bigint | no | **FK** → users (CASCADE) |
+| token_id | varchar(64) | no | **UNIQUE** — the JWT `jti` (random) |
+| login_verification_id | bigint | yes | **FK** → login_verifications (SET NULL) — the live verification that completed this login |
+| expires_at | timestamp | no | Matches the JWT `exp` |
+| revoked_at | timestamp | yes | Set on logout |
+| created_at | timestamp | no | |
+
+Index `idx_user_sessions_user_created (user_id, created_at)`.
 
 ## 5. Primary keys
 
@@ -414,10 +482,12 @@ Privacy rules:
 | blocks | `block_id` |
 | activity_feedback | `id` |
 | login_verifications | `verification_id` |
+| otp_codes | `otp_id` |
+| user_sessions | `session_id` |
 
 ## 6. Foreign keys and delete policy
 
-There are 19 foreign keys. All use `ON UPDATE RESTRICT`, because surrogate ids never change.
+There are 22 foreign keys (19 from Phase 2, 3 from Phase 4). All use `ON UPDATE RESTRICT`, because surrogate ids never change.
 
 | Foreign key | ON DELETE | Reason |
 | --- | --- | --- |
@@ -426,6 +496,9 @@ There are 19 foreign keys. All use `ON UPDATE RESTRICT`, because surrogate ids n
 | user_hobbies.user_id | CASCADE | Owned data |
 | quiz_answers.user_id | CASCADE | Owned data |
 | login_verifications.user_id | CASCADE | Owned security log for that account |
+| otp_codes.user_id | CASCADE | Owned, short-lived authentication data (Phase 4) |
+| user_sessions.user_id | CASCADE | Owned sessions (Phase 4) |
+| user_sessions.login_verification_id | SET NULL | Audit link only (Phase 4) |
 | user_hobbies.hobby_id | RESTRICT | A hobby in use cannot be deleted; set it to `inactive` instead |
 | matches.user1_id / user2_id | RESTRICT | Interaction history involving another user |
 | connection_requests.sender_id / receiver_id | RESTRICT | Interaction history |
@@ -469,6 +542,10 @@ Primary keys and unique constraints are indexed automatically. Additional indexe
 | activity_feedback | `idx_activity_feedback_user_created` | user_id, created_at | A user's recent activity |
 | activity_feedback | `idx_activity_feedback_target` | target_user_id | Interactions received |
 | login_verifications | `idx_login_verifications_user_created` | user_id, created_at | Latest verification; rate limiting |
+| login_verifications | `uq_login_verifications_token_hash` (unique) | token_hash | Look up the verification session by its token (Phase 4) |
+| otp_codes | `idx_otp_codes_lookup` | user_id, purpose, channel, created_at | Active code lookup; resend cooldown and hourly cap (Phase 4) |
+| user_sessions | `uq_user_sessions_token_id` (unique) | token_id | Session check on every authenticated request (Phase 4) |
+| user_sessions | `idx_user_sessions_user_created` | user_id, created_at | A user's sessions (Phase 4) |
 
 Where a composite index already starts with a column, that column gets no separate index (for example `matches.user1_id` is covered by `uq_matches_pair`). On MySQL, InnoDB also creates an index for any foreign-key column that has none, such as `reports.reviewed_by`.
 
@@ -515,6 +592,9 @@ Migration files, applied in order:
 | `20261004001100_create_blocks.js` | blocks |
 | `20261004001200_create_activity_feedback.js` | activity_feedback |
 | `20261004001300_create_login_verifications.js` | login_verifications |
+| `20261004001400_create_otp_codes.js` | otp_codes (Phase 4) |
+| `20261004001500_add_session_fields_to_login_verifications.js` | `token_hash`, `expires_at`, `auth_method` + CHECK (Phase 4) |
+| `20261004001600_create_user_sessions.js` | user_sessions (Phase 4) |
 
 Rules for changing the schema:
 - **Never edit a migration that has already run in a shared environment.** Add a new migration instead.
