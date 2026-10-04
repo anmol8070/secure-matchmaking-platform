@@ -6,20 +6,8 @@ const { createApp } = require('../src/app');
 const ALLOWED_ORIGIN = 'http://localhost:5173';
 const app = createApp({ corsOrigins: [ALLOWED_ORIGIN] });
 
-const NOT_IMPLEMENTED = {
-  success: false,
-  message: 'This module will be implemented in a later development phase',
-};
-
-// Every planned endpoint registered in Phase 3, grouped by module.
-const PLACEHOLDER_ENDPOINTS = [
-  ['post', '/api/v1/auth/register'],
-  ['post', '/api/v1/auth/otp/send'],
-  ['post', '/api/v1/auth/otp/verify'],
-  ['post', '/api/v1/auth/login'],
-  ['post', '/api/v1/auth/login/verification'],
-  ['post', '/api/v1/auth/logout'],
-  ['get', '/api/v1/auth/me'],
+// Every protected endpoint (module placeholders + admin). Without a token → 401.
+const PROTECTED_ENDPOINTS = [
   ['get', '/api/v1/profile'],
   ['post', '/api/v1/profile'],
   ['put', '/api/v1/profile'],
@@ -49,7 +37,6 @@ const PLACEHOLDER_ENDPOINTS = [
   ['delete', '/api/v1/blocks/42'],
   ['post', '/api/v1/feedback'],
   ['get', '/api/v1/feedback'],
-  ['post', '/api/v1/admin/login'],
   ['get', '/api/v1/admin/dashboard'],
   ['get', '/api/v1/admin/users'],
   ['get', '/api/v1/admin/users/42'],
@@ -107,31 +94,56 @@ describe('404 handler', () => {
   });
 });
 
-describe('placeholder modules', () => {
-  it.each(PLACEHOLDER_ENDPOINTS)('%s %s returns a controlled 501', async (method, path) => {
+describe('protected modules', () => {
+  // With a valid token these return 501 placeholders — see tests/integration/auth.test.js.
+  it.each(PROTECTED_ENDPOINTS)('%s %s requires authentication', async (method, path) => {
     const res = await request(app)[method](path).send({});
 
-    expect(res.status).toBe(501);
-    expect(res.body).toEqual(NOT_IMPLEMENTED);
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ success: false, message: 'Authentication required' });
+  });
+
+  it.each([
+    ['Basic abc', 'Invalid or expired token'],
+    ['Bearer not-a-jwt', 'Invalid or expired token'],
+    ['Bearer aaa.bbb.ccc', 'Invalid or expired token'],
+  ])('rejects Authorization "%s" with 401', async (header, message) => {
+    const res = await request(app).get('/api/v1/auth/me').set('Authorization', header);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ success: false, message });
   });
 });
 
 describe('request validation', () => {
+  // Validation runs before any database access, so these need no database.
   it.each([
-    ['get', '/api/v1/profile/abc', 'params.userId'],
-    ['get', '/api/v1/matches/0', 'params.userId'],
-    ['delete', '/api/v1/blocks/-5', 'params.userId'],
-    ['patch', '/api/v1/connections/requests/x', 'params.requestId'],
-    ['patch', '/api/v1/admin/reports/1.5', 'params.reportId'],
-  ])('%s %s returns 422 with field errors', async (method, path, field) => {
-    const res = await request(app)[method](path);
+    ['/api/v1/auth/register', { password: 'Secure123' }, 'body.email', 'Email or mobile number is required'],
+    ['/api/v1/auth/register', { email: 'nope', password: 'Secure123' }, 'body.email', 'Enter a valid email address'],
+    ['/api/v1/auth/register', { mobile: '12', password: 'Secure123' }, 'body.mobile', 'Enter a valid mobile number'],
+    ['/api/v1/auth/register', { email: 'a@b.co', password: 'short1' }, 'body.password', 'Password must be at least 8 characters'],
+    ['/api/v1/auth/register', { email: 'a@b.co', password: 'onlyletters' }, 'body.password', 'Password must contain a number'],
+    ['/api/v1/auth/send-otp', { email: 'a@b.co', mobile: '9876543210' }, 'body.email', 'Provide either an email or a mobile number'],
+    ['/api/v1/auth/verify-otp', { email: 'a@b.co', otp: '12ab56' }, 'body.otp', 'OTP must be 6 digits'],
+    ['/api/v1/auth/login', { identifier: 'a@b.co' }, 'body.password', 'Password is required'],
+  ])('POST %s %j returns 422', async (path, body, field, message) => {
+    const res = await request(app).post(path).send(body);
 
     expect(res.status).toBe(422);
-    expect(res.body).toEqual({
-      success: false,
-      message: 'Validation failed',
-      errors: [{ field, message: expect.any(String) }],
+    expect(res.body.message).toBe('Validation failed');
+    expect(res.body.errors).toContainEqual({ field, message });
+  });
+
+  it('rejects camera images in the live verification request', async () => {
+    const res = await request(app).post('/api/v1/auth/login-verification/complete').send({
+      verification_token: 'x'.repeat(43),
+      face_detected: true,
+      face_count: 1,
+      image: 'data:image/png;base64,AAAA',
     });
+
+    expect(res.status).toBe(422);
+    expect(res.body.errors[0].message).toMatch(/Unrecognized key/);
   });
 });
 
@@ -180,7 +192,7 @@ describe('CORS', () => {
   });
 
   it('rejects other origins with 403 before reaching routes', async () => {
-    const res = await request(app).post('/api/v1/auth/login').set('Origin', 'http://evil.example.com');
+    const res = await request(app).post('/api/v1/auth/register').set('Origin', 'http://evil.example.com');
 
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ success: false, message: 'Origin not allowed by CORS policy' });
@@ -204,7 +216,7 @@ describe('response format', () => {
     const responses = await Promise.all([
       request(app).get('/api/v1/nope'),
       request(app).get('/api/v1/profile'),
-      request(app).get('/api/v1/profile/abc'),
+      request(app).post('/api/v1/auth/register').send({}),
       request(app).post('/api/v1/auth/login').set('Content-Type', 'application/json').send('{'),
       request(app).get('/api/v1/health').set('Origin', 'http://evil.example.com'),
     ]);

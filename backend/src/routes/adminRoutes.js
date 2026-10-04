@@ -1,16 +1,26 @@
 /**
- * /api/v1/admin — admin panel API (authorization added in Phase 4).
- * All endpoints are Phase 3 placeholders (HTTP 501).
+ * /api/v1/admin — admin panel API.
+ * Login is public (role-restricted); every other route requires an
+ * authenticated admin. Admin features themselves are later-phase placeholders (501).
  */
 const { Router } = require('express');
 const admin = require('../controllers/adminController');
 const { validate, z, id } = require('../validators/commonValidator');
+const { loginBody } = require('../validators/authValidator');
+const { requireAuth } = require('../middleware/authMiddleware');
+const { requireRole } = require('../middleware/roleMiddleware');
+const { authLimiter, failedAttemptLimiter } = require('../middleware/rateLimiter');
+const { ROLES } = require('../constants/enums');
 
 const router = Router();
 const userIdParams = z.object({ userId: id() });
 const reportIdParams = z.object({ reportId: id() });
 
-router.post('/login', admin.login);
+router.post('/login', authLimiter, failedAttemptLimiter, validate({ body: loginBody }), admin.login);
+
+// Everything below: authenticated admins only.
+router.use(requireAuth, requireRole(ROLES.ADMIN));
+
 router.get('/dashboard', admin.getDashboard);
 
 // User management

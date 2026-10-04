@@ -31,6 +31,9 @@ const APP_TABLES = [
   'blocks',
   'activity_feedback',
   'login_verifications',
+  // Phase 4
+  'otp_codes',
+  'user_sessions',
 ];
 
 // Violation kinds -> PostgreSQL SQLSTATE codes and MySQL/MariaDB error numbers.
@@ -190,6 +193,8 @@ describe('schema structure', () => {
       blocks: ['block_id'],
       activity_feedback: ['id'],
       login_verifications: ['verification_id'],
+      otp_codes: ['otp_id'],
+      user_sessions: ['session_id'],
     });
   });
 
@@ -203,6 +208,9 @@ describe('schema structure', () => {
         'connection_requests.receiver_id -> users.user_id RESTRICT',
         'connection_requests.sender_id -> users.user_id RESTRICT',
         'login_verifications.user_id -> users.user_id CASCADE',
+        'otp_codes.user_id -> users.user_id CASCADE',
+        'user_sessions.login_verification_id -> login_verifications.verification_id SET NULL',
+        'user_sessions.user_id -> users.user_id CASCADE',
         'matches.user1_id -> users.user_id RESTRICT',
         'matches.user2_id -> users.user_id RESTRICT',
         'messages.receiver_id -> users.user_id RESTRICT',
@@ -607,7 +615,7 @@ describe('migrations', () => {
     }
 
     const [, applied] = await db.migrate.latest();
-    expect(applied).toHaveLength(14);
+    expect(applied).toHaveLength(17);
     for (const table of APP_TABLES) {
       expect(await db.schema.hasTable(table)).toBe(true);
     }

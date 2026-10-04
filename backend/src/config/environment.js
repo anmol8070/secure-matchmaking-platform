@@ -12,6 +12,12 @@ const toInt = (value, fallback) => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+/** Express "trust proxy": a hop count ("1"), a subnet/list ("loopback"), or off. */
+function parseTrustProxy(value) {
+  if (!value) return false;
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
+
 const nodeEnv = process.env.NODE_ENV || 'development';
 
 const config = {
@@ -19,6 +25,9 @@ const config = {
   isProduction: nodeEnv === 'production',
   isTest: nodeEnv === 'test',
   port: toInt(process.env.PORT, 5000),
+  // Set when running behind a reverse proxy/load balancer so rate limits see the client IP
+  // (e.g. TRUST_PROXY=1 for one proxy hop). Leave empty when the API is exposed directly.
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
 
   // Comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com".
   // "*" (any origin) is accepted outside production only.
@@ -40,14 +49,42 @@ const config = {
     poolMax: toInt(process.env.DB_POOL_MAX, 10),
   },
 
-  // Used from Phase 4 (authentication) onward
   jwt: {
     secret: process.env.JWT_SECRET || '',
+    // Any value accepted by jsonwebtoken, e.g. "15m", "12h", "1d"
+    expiresIn: process.env.JWT_EXPIRES_IN || '1d',
   },
+
   otp: {
-    expiryMinutes: toInt(process.env.OTP_EXPIRY_MINUTES, 10),
+    length: toInt(process.env.OTP_LENGTH, 6),
+    expiryMinutes: toInt(process.env.OTP_EXPIRY_MINUTES, 5),
+    maxAttempts: toInt(process.env.OTP_MAX_ATTEMPTS, 5),
+    resendCooldownSeconds: toInt(process.env.OTP_RESEND_COOLDOWN_SECONDS, 60),
+    maxSendsPerHour: toInt(process.env.OTP_MAX_SENDS_PER_HOUR, 5),
+    // HMAC key for stored OTP hashes; falls back to JWT_SECRET outside production
+    secret: process.env.OTP_SECRET || '',
+    // Delivery provider: "dev" (development outbox, never in production)
+    provider: (process.env.OTP_PROVIDER || 'dev').toLowerCase(),
   },
+
+  loginVerification: {
+    expiryMinutes: toInt(process.env.LOGIN_VERIFICATION_EXPIRY_MINUTES, 5),
+    maxAttempts: toInt(process.env.LOGIN_VERIFICATION_MAX_ATTEMPTS, 5),
+  },
+
+  rateLimit: {
+    windowMinutes: toInt(process.env.AUTH_RATE_LIMIT_WINDOW_MINUTES, 15),
+    // All /auth requests per IP per window
+    authMaxPerIp: toInt(process.env.AUTH_RATE_LIMIT_MAX, 100),
+    // Failed password/OTP checks per IP + account per window (no account lockout)
+    failedAttemptsMax: toInt(process.env.AUTH_FAILED_ATTEMPTS_MAX, 10),
+  },
+
+  // Prefix for 10-digit mobile numbers entered without a country code
+  defaultCountryCode: process.env.DEFAULT_COUNTRY_CODE || '+91',
 };
+
+const PLACEHOLDER_SECRET = /^(|replace_with.*|changeme|secret)$/i;
 
 /**
  * Returns a list of configuration problems that must be fixed before the
@@ -61,9 +98,34 @@ function validateEnvironment(cfg = config) {
     if (!cfg.db.url && !(cfg.db.host && cfg.db.database)) {
       problems.push('Database settings (DATABASE_URL or DB_HOST/DB_DATABASE) must be set in production');
     }
+    if (PLACEHOLDER_SECRET.test(cfg.jwt.secret) || cfg.jwt.secret.length < 32) {
+      problems.push('JWT_SECRET must be a random value of at least 32 characters in production');
+    }
+    if (PLACEHOLDER_SECRET.test(cfg.otp.secret) || cfg.otp.secret.length < 32) {
+      problems.push('OTP_SECRET must be a random value of at least 32 characters in production');
+    }
+    if (cfg.otp.provider === 'dev') {
+      problems.push('OTP_PROVIDER=dev is for development only — configure a real OTP provider');
+    }
   }
+  if (cfg.otp.length < 4 || cfg.otp.length > 10) problems.push('OTP_LENGTH must be between 4 and 10');
   return problems;
 }
+
+/**
+ * Secrets used for signing. Outside production a missing secret falls back to
+ * a per-process random value (tokens then stop working after a restart).
+ */
+let devSecret;
+function signingSecret(value) {
+  if (value && !PLACEHOLDER_SECRET.test(value)) return value;
+  if (nodeEnv === 'production') throw new Error('Signing secret is not configured');
+  devSecret ||= require('crypto').randomBytes(48).toString('hex');
+  return devSecret;
+}
+
+config.jwtSecret = () => signingSecret(config.jwt.secret);
+config.otpSecret = () => signingSecret(config.otp.secret || config.jwt.secret);
 
 config.validateEnvironment = validateEnvironment;
 

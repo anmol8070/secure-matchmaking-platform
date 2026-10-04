@@ -4,7 +4,7 @@ function loadConfig(env) {
   let config;
   try {
     for (const key of Object.keys(process.env)) {
-      if (/^(NODE_ENV|PORT|CORS_ORIGIN|DB_|DATABASE_URL|JWT_SECRET|OTP_)/.test(key)) delete process.env[key];
+      if (/^(NODE_ENV|PORT|CORS_ORIGIN|DB_|DATABASE_URL|JWT_|OTP_|LOGIN_|AUTH_|TRUST_PROXY|DEFAULT_COUNTRY)/.test(key)) delete process.env[key];
     }
     Object.assign(process.env, env);
     jest.isolateModules(() => {
@@ -29,7 +29,9 @@ describe('environment configuration', () => {
       port: 5000,
       corsOrigins: [],
       db: { client: 'postgres', poolMin: 0, poolMax: 10 },
-      otp: { expiryMinutes: 10 },
+      otp: { length: 6, expiryMinutes: 5, maxAttempts: 5, provider: 'dev' },
+      jwt: { expiresIn: '1d' },
+      trustProxy: false,
     });
   });
 
@@ -45,7 +47,10 @@ describe('environment configuration', () => {
       DB_USERNAME: 'u',
       DB_PASSWORD: 'p',
       JWT_SECRET: 's',
-      OTP_EXPIRY_MINUTES: '5',
+      OTP_EXPIRY_MINUTES: '3',
+      OTP_LENGTH: '8',
+      JWT_EXPIRES_IN: '2h',
+      TRUST_PROXY: '1',
     });
 
     expect(config).toMatchObject({
@@ -53,8 +58,9 @@ describe('environment configuration', () => {
       port: 8080,
       corsOrigins: ['https://app.example.com', 'https://admin.example.com'],
       db: { client: 'mysql', host: 'db', port: 3307, database: 'app', username: 'u', password: 'p' },
-      jwt: { secret: 's' },
-      otp: { expiryMinutes: 5 },
+      jwt: { secret: 's', expiresIn: '2h' },
+      otp: { expiryMinutes: 3, length: 8 },
+      trustProxy: 1,
     });
   });
 
@@ -63,20 +69,39 @@ describe('environment configuration', () => {
       NODE_ENV: 'production',
       CORS_ORIGIN: 'https://app.example.com',
       DATABASE_URL: 'postgres://u:p@db:5432/app',
+      JWT_SECRET: 'j'.repeat(40), OTP_SECRET: 'o'.repeat(40), OTP_PROVIDER: 'smtp',
     });
     expect(config.validateEnvironment()).toEqual([]);
   });
 
-  it('refuses to start production without CORS origins or a database', () => {
-    const config = loadConfig({ NODE_ENV: 'production' });
+  it('refuses to start production without CORS, database, secrets or an OTP provider', () => {
+    const config = loadConfig({ NODE_ENV: 'production', JWT_SECRET: 'replace_with_a_long_random_secret' });
     expect(config.validateEnvironment()).toEqual([
       'CORS_ORIGIN must be set in production',
       'Database settings (DATABASE_URL or DB_HOST/DB_DATABASE) must be set in production',
+      'JWT_SECRET must be a random value of at least 32 characters in production',
+      'OTP_SECRET must be a random value of at least 32 characters in production',
+      'OTP_PROVIDER=dev is for development only — configure a real OTP provider',
     ]);
   });
 
+  it('uses an ephemeral signing secret outside production when none is configured', () => {
+    const dev = loadConfig({ NODE_ENV: 'development', JWT_SECRET: 'replace_with_a_long_random_secret' });
+    expect(dev.jwtSecret()).toHaveLength(96);
+    expect(dev.jwtSecret()).toBe(dev.jwtSecret());
+
+    const prod = loadConfig({ NODE_ENV: 'production' });
+    expect(() => prod.jwtSecret()).toThrow(/not configured/);
+  });
+
   it('refuses unrestricted CORS in production but allows it in development', () => {
-    const prod = loadConfig({ NODE_ENV: 'production', CORS_ORIGIN: '*', DB_HOST: 'h', DB_DATABASE: 'd' });
+    const prod = loadConfig({
+      NODE_ENV: 'production',
+      CORS_ORIGIN: '*',
+      DB_HOST: 'h',
+      DB_DATABASE: 'd',
+      JWT_SECRET: 'j'.repeat(40), OTP_SECRET: 'o'.repeat(40), OTP_PROVIDER: 'smtp',
+    });
     expect(prod.validateEnvironment()).toEqual(['CORS_ORIGIN must not be "*" in production']);
 
     const dev = loadConfig({ NODE_ENV: 'development', CORS_ORIGIN: '*' });

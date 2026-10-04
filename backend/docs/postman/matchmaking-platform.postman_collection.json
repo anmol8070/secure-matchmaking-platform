@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Matchmaking Platform API",
-    "description": "Phase 3 — base REST API. Run with Postman or: npx newman run matchmaking-platform.postman_collection.json",
+    "description": "Phase 4 — authentication (registration, OTP, login, live presence verification, JWT, logout) plus the Phase 3 base API.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -12,17 +12,39 @@
     {
       "key": "allowedOrigin",
       "value": "http://localhost:5173"
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": "Secure123"
+    },
+    {
+      "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "verificationToken",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
     }
   ],
   "item": [
     {
-      "name": "Health",
+      "name": "1. Health and errors",
       "item": [
         {
           "name": "GET /health",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/health"
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Public. Liveness of the API."
           },
           "event": [
             {
@@ -31,24 +53,17 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 200', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test('success, message, version', () => pm.expect(body).to.include({ success: true, message: 'API is running', version: 'v1' }));",
-                  "pm.test('timestamp is ISO date', () => pm.expect(Date.parse(body.timestamp)).to.not.be.NaN);",
-                  "pm.test('no sensitive fields', () => pm.expect(Object.keys(body)).to.have.members(['success','message','version','timestamp','environment']));"
+                  "pm.test('body', () => pm.expect(pm.response.json()).to.include({ success: true, message: 'API is running', version: 'v1' }));"
                 ]
               }
             }
           ]
-        }
-      ]
-    },
-    {
-      "name": "Errors and middleware",
-      "item": [
+        },
         {
           "name": "404 unknown endpoint",
           "request": {
             "method": "GET",
+            "header": [],
             "url": "{{baseUrl}}/does-not-exist"
           },
           "event": [
@@ -58,97 +73,23 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 404', () => pm.response.to.have.status(404));",
-                  "pm.test('standard 404 body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'API endpoint not found' }));"
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"API endpoint not found\" }));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "422 invalid path parameter",
+          "name": "CORS blocked origin → 403",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/profile/abc"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
-                  "const body = pm.response.json();",
-                  "pm.test('validation body', () => { pm.expect(body.success).to.eql(false); pm.expect(body.message).to.eql('Validation failed'); pm.expect(body.errors[0].field).to.eql('params.userId'); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "400 malformed JSON",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/auth/login",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\"bad json\""
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
-                  "pm.test('safe message', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'Malformed JSON in request body' }));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "CORS allowed origin",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/health",
-            "header": [
-              {
-                "key": "Origin",
-                "value": "{{allowedOrigin}}"
-              }
-            ]
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
-                  "pm.test('origin echoed', () => pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql(pm.variables.get('allowedOrigin')));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "CORS blocked origin",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/health",
             "header": [
               {
                 "key": "Origin",
                 "value": "http://evil.example.com"
               }
-            ]
+            ],
+            "url": "{{baseUrl}}/health"
           },
           "event": [
             {
@@ -156,8 +97,28 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
-                  "pm.test('no CORS header', () => pm.expect(pm.response.headers.has('Access-Control-Allow-Origin')).to.eql(false));"
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected module without token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/profile",
+            "description": "Every module except /health, /auth and /admin/login requires a Bearer access token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Authentication required\" }));"
                 ]
               }
             }
@@ -166,22 +127,22 @@
       ]
     },
     {
-      "name": "Module placeholders (501)",
+      "name": "2. Registration and account OTP",
       "item": [
         {
-          "name": "Auth — register",
+          "name": "Register — weak password → 422",
           "request": {
             "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/auth/register",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
             "body": {
               "mode": "raw",
-              "raw": "{}"
+              "raw": "{\n  \"email\": \"weak@example.com\",\n  \"password\": \"short\"\n}"
             }
           },
           "event": [
@@ -190,27 +151,67 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('field error', () => pm.expect(pm.response.json().errors.map(e => e.field)).to.include('body.password'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Auth — live presence verification",
+          "name": "Register — valid",
           "request": {
             "method": "POST",
-            "url": "{{baseUrl}}/auth/login/verification",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
               }
             ],
+            "url": "{{baseUrl}}/auth/register",
             "body": {
               "mode": "raw",
-              "raw": "{}"
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Public. Body: email and/or mobile (+ password: 8–128 chars with a letter and a number). Creates the account as pending_verification and sends an OTP. The OTP is never returned."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('email', `postman${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('otp required, nothing secret returned', () => { pm.expect(d.otp_required).to.eql(true); pm.expect(JSON.stringify(pm.response.json())).to.not.match(/password|hash/i); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register — duplicate email → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -219,17 +220,473 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"An account with these details already exists\" }));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Profile — get own",
+          "name": "DEV: read OTP from outbox",
           "request": {
             "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/dev/otp?destination={{email}}",
+            "description": "Development only (not mounted in production). Replaces checking your email/SMS."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('otp', pm.response.json().data.code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP — wrong code → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/verify-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"000000\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.collectionVariables.get('otp') === '000000') pm.request.body.raw = pm.request.body.raw.replace('000000', '111111');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Invalid or expired OTP\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP — valid → account active",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/verify-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "description": "Public. Body: (email | mobile) + otp. Wrong, expired and unknown codes all return 401 \"Invalid or expired OTP\"."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('active', () => pm.expect(pm.response.json().data.status).to.eql('active'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP — reuse → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/verify-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Invalid or expired OTP\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send OTP — generic response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/send-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody@example.com\"\n}"
+            },
+            "description": "Public. Resends an account-verification OTP. Same response whether or not the account exists. Limited by cooldown and hourly cap (429)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"If the account exists, an OTP has been sent.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Login (step 1: credentials)",
+      "item": [
+        {
+          "name": "Login — wrong password → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{email}}\",\n  \"password\": \"Wrong1234\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Invalid credentials\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — valid → verification challenge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Public. Body: identifier (email or mobile) + password. Returns a temporary verification_token — NOT an access token. The login is completed only by the live verification step."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('live verification required, no access token', () => { pm.expect(d.requires_live_verification).to.eql(true); pm.expect(d.access_token).to.be.undefined; });",
+                  "pm.collectionVariables.set('verificationToken', d.verification_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verification token is not an access token → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{verificationToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Live verification (step 2) → JWT",
+      "item": [
+        {
+          "name": "No face → 422 retry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login-verification/complete",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"{{verificationToken}}\",\n  \"face_detected\": false,\n  \"face_count\": 0\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"No face detected. Please take the photo again.\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Multiple faces → 422 retry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login-verification/complete",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"{{verificationToken}}\",\n  \"face_detected\": true,\n  \"face_count\": 2\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Multiple faces detected. Please ensure only one person is visible.\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Image in request → 422 (images are never accepted)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login-verification/complete",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"{{verificationToken}}\",\n  \"face_detected\": true,\n  \"face_count\": 1,\n  \"image\": \"data:image/jpeg;base64,AAAA\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid verification token → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login-verification/complete",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n  \"face_detected\": true,\n  \"face_count\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Invalid or expired verification session. Please log in again.\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "One face → access token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login-verification/complete",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"{{verificationToken}}\",\n  \"face_detected\": true,\n  \"face_count\": 1,\n  \"confidence\": 0.95,\n  \"detector\": \"postman\"\n}"
+            },
+            "description": "Public (requires the verification_token from step 1). Body: verification_token, face_detected, face_count (+ optional confidence, detector). Exactly one face passes and returns the JWT access token. Only the detection result is sent — never an image."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('bearer token + safe user', () => { pm.expect(d.token_type).to.eql('Bearer'); pm.expect(d.user.password_hash).to.be.undefined; });",
+                  "pm.collectionVariables.set('accessToken', d.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verification token reuse → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login-verification/complete",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"{{verificationToken}}\",\n  \"face_detected\": true,\n  \"face_count\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Current user and authorization",
+      "item": [
+        {
+          "name": "GET /auth/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/me",
+            "description": "Requires Authorization: Bearer <access token>. Returns the account without password hash, OTPs or secrets."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('no secrets', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/password|hash|otp/i));",
+                  "pm.test('active user', () => pm.expect(pm.response.json().data).to.include({ role: 'user', status: 'active' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "User → protected placeholder (501)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
             "url": "{{baseUrl}}/profile"
           },
           "event": [
@@ -239,36 +696,24 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"This module will be implemented in a later development phase\" }));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Profile — upload photo",
-          "request": {
-            "method": "PUT",
-            "url": "{{baseUrl}}/profile/photo"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Preferences — get",
+          "name": "User → admin API → 403",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/preferences"
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users",
+            "description": "Admin APIs require role=admin."
           },
           "event": [
             {
@@ -276,18 +721,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"You do not have permission to perform this action\" }));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Hobbies — list",
+          "name": "Tampered JWT → 401",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/hobbies"
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxfQ.invalidsignature"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/me"
           },
           "event": [
             {
@@ -295,66 +746,29 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Invalid or expired token\" }));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Matches — list",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/matches"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Recommendations — list",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/recommendations"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Connections — send request",
+          "name": "Admin login — non-admin → 401",
           "request": {
             "method": "POST",
-            "url": "{{baseUrl}}/connections/requests",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
               }
             ],
+            "url": "{{baseUrl}}/admin/login",
             "body": {
               "mode": "raw",
-              "raw": "{}"
-            }
+              "raw": "{\n  \"identifier\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Public, admin accounts only; same live verification step follows. Promote an account with `npm run admin:promote -- <email>`."
           },
           "event": [
             {
@@ -362,18 +776,54 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Invalid credentials\" }));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Login with OTP",
+      "item": [
+        {
+          "name": "Send login OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login/send-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{email}}\"\n}"
+            },
+            "description": "Public. Body: identifier. Generic response; active accounts receive a login OTP."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"If the account exists, an OTP has been sent.\"));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Messages — conversations",
+          "name": "DEV: read login OTP",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/messages/conversations"
+            "header": [],
+            "url": "{{baseUrl}}/dev/otp?destination={{email}}"
           },
           "event": [
             {
@@ -381,28 +831,30 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('login purpose', () => pm.expect(pm.response.json().data.purpose).to.eql('login'));",
+                  "pm.collectionVariables.set('otp', pm.response.json().data.code);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Reports — create",
+          "name": "Verify login OTP → verification challenge",
           "request": {
             "method": "POST",
-            "url": "{{baseUrl}}/reports",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
               }
             ],
+            "url": "{{baseUrl}}/auth/login/verify-otp",
             "body": {
               "mode": "raw",
-              "raw": "{}"
-            }
+              "raw": "{\n  \"identifier\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "description": "Public. Body: identifier + otp. Like password login, returns a verification_token; live verification is still required."
           },
           "event": [
             {
@@ -410,28 +862,30 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('no access token yet', () => pm.expect(pm.response.json().data.access_token).to.be.undefined);"
                 ]
               }
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "name": "7. Logout",
+      "item": [
         {
-          "name": "Blocks — block user",
+          "name": "Logout",
           "request": {
             "method": "POST",
-            "url": "{{baseUrl}}/blocks",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
+            "url": "{{baseUrl}}/auth/logout",
+            "description": "Requires Bearer token. Revokes this session server-side; the token stops working immediately."
           },
           "event": [
             {
@@ -439,47 +893,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Logged out successfully\"));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Feedback — record",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/feedback",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Admin — dashboard",
+          "name": "Token after logout → 401",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/admin/dashboard"
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/me"
           },
           "event": [
             {
@@ -487,8 +918,28 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
-                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Session has expired or been revoked. Please log in again.\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout without token → 401",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Authentication required\" }));"
                 ]
               }
             }

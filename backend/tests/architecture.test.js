@@ -50,7 +50,7 @@ describe('layered structure', () => {
     }
   });
 
-  it('has a model for each Phase 2 table', () => {
+  it('has a model for each table (Phase 2 + Phase 4 auth tables)', () => {
     const tables = Object.values(require('../src/models')).map((model) => model.table);
     expect(tables.sort()).toEqual(
       [
@@ -67,6 +67,8 @@ describe('layered structure', () => {
         'blocks',
         'activity_feedback',
         'login_verifications',
+        'otp_codes',
+        'user_sessions',
       ].sort()
     );
   });
