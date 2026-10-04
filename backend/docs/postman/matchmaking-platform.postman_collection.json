@@ -1,0 +1,500 @@
+{
+  "info": {
+    "name": "Matchmaking Platform API",
+    "description": "Phase 3 — base REST API. Run with Postman or: npx newman run matchmaking-platform.postman_collection.json",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1"
+    },
+    {
+      "key": "allowedOrigin",
+      "value": "http://localhost:5173"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('success, message, version', () => pm.expect(body).to.include({ success: true, message: 'API is running', version: 'v1' }));",
+                  "pm.test('timestamp is ISO date', () => pm.expect(Date.parse(body.timestamp)).to.not.be.NaN);",
+                  "pm.test('no sensitive fields', () => pm.expect(Object.keys(body)).to.have.members(['success','message','version','timestamp','environment']));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Errors and middleware",
+      "item": [
+        {
+          "name": "404 unknown endpoint",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/does-not-exist"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('standard 404 body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'API endpoint not found' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 invalid path parameter",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/profile/abc"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test('validation body', () => { pm.expect(body.success).to.eql(false); pm.expect(body.message).to.eql('Validation failed'); pm.expect(body.errors[0].field).to.eql('params.userId'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 malformed JSON",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"bad json\""
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('safe message', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'Malformed JSON in request body' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CORS allowed origin",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{allowedOrigin}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('origin echoed', () => pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql(pm.variables.get('allowedOrigin')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CORS blocked origin",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://evil.example.com"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('no CORS header', () => pm.expect(pm.response.headers.has('Access-Control-Allow-Origin')).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Module placeholders (501)",
+      "item": [
+        {
+          "name": "Auth — register",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth — live presence verification",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login/verification",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Profile — get own",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Profile — upload photo",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/profile/photo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preferences — get",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/preferences"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hobbies — list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/hobbies"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Matches — list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/matches"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recommendations — list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/recommendations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Connections — send request",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/connections/requests",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Messages — conversations",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/messages/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reports — create",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/reports",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Blocks — block user",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/blocks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Feedback — record",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/feedback",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin — dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 501', () => pm.response.to.have.status(501));",
+                  "pm.test('controlled placeholder body', () => pm.expect(pm.response.json()).to.eql({ success: false, message: 'This module will be implemented in a later development phase' }));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -11,7 +11,7 @@
 process.env.NODE_ENV = 'test';
 
 const knex = require('knex');
-const config = require('../../src/config/env');
+const config = require('../../src/config/environment');
 const { buildKnexConfig } = require('../../src/config/database');
 const { createDatabase } = require('../../scripts/db-create');
 
@@ -61,9 +61,13 @@ async function expectViolation(promise, ...kinds) {
 }
 
 async function insertReturningId(table, row, idColumn) {
-  const [result] = await db(table).insert(row, [idColumn]);
-  // pg returns [{ id }], mysql returns [insertId]
-  return typeof result === 'object' ? result[idColumn] : result;
+  // pg needs RETURNING and gives [{ id }]; mysql has no RETURNING and gives [insertId]
+  if (isPg) {
+    const [result] = await db(table).insert(row, [idColumn]);
+    return result[idColumn];
+  }
+  const [insertId] = await db(table).insert(row);
+  return insertId;
 }
 
 function createUser(overrides = {}) {
@@ -607,5 +611,6 @@ describe('migrations', () => {
     for (const table of APP_TABLES) {
       expect(await db.schema.hasTable(table)).toBe(true);
     }
-  });
+    // ~28 DDL statements: can exceed Jest's 5 s default on a cold MySQL/MariaDB server.
+  }, 60000);
 });

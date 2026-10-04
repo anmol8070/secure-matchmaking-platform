@@ -15,13 +15,14 @@ The matching and recommendation logic is kept independent of the frontend, so sc
 | ------------------ | ------------------------------------------------------------- |
 | Frontend           | React 19, React Router 7, Vite, JavaScript, HTML, CSS         |
 | Backend            | Node.js, Express 5, REST APIs                                 |
-| Database           | PostgreSQL **or** MySQL via Knex (selected with `DB_CLIENT`)  |
-| Authentication     | OTP + JWT/session *(Phase 3)*                                 |
+| Database           | PostgreSQL **or** MySQL/MariaDB via Knex (selected with `DB_CLIENT`) |
+| Authentication     | OTP + JWT/session *(Phase 4)*                                 |
 | Real-time          | Socket.IO / WebSocket *(later phase)*                         |
 | Video              | WebRTC *(later phase)*                                        |
 | Recommendation     | Separate backend service/module *(later phase)*               |
-| Security           | Helmet, CORS allow-list, env-based secrets                    |
-| Testing            | Jest + Supertest (backend), Vitest + Testing Library (frontend), Postman, browser |
+| Security           | Helmet, CORS allow-list, env-based secrets, log redaction     |
+| Validation         | zod (request schemas)                                         |
+| Testing            | Jest + Supertest (backend), Vitest + Testing Library (frontend), Postman/Newman, browser |
 | Version control    | Git + GitHub                                                  |
 
 ## 3. Architecture
@@ -30,16 +31,22 @@ The matching and recommendation logic is kept independent of the frontend, so sc
 React frontend (User panel + Admin panel)
         │  HTTP (REST, /api/v1)
         ▼
-Express routes → controllers         (HTTP only)
+Express middleware                   (helmet, CORS, logging, body parsing)
         ▼
-Services                             (business logic, incl. future matching engine)
+Routes → validators → controllers    (HTTP only)
         ▼
-Models / Knex                        (data access)
+Services                             (business logic: auth, verification, matching, recommendation, …)
         ▼
-PostgreSQL or MySQL
+Models / Knex                        (data access, one model per table)
+        ▼
+PostgreSQL or MySQL/MariaDB
 ```
 
-React components contain only presentation logic. All API access goes through `frontend/src/services`.
+React components contain only presentation logic, and all API access goes through `frontend/src/services`.
+
+Matching and recommendation logic lives only in backend services. Login presence verification (`verificationService`) is separate from profile pictures (`profileService`).
+
+The full backend design is in **[backend/docs/api-architecture.md](backend/docs/api-architecture.md)**.
 
 ## 4. Prerequisites
 
@@ -82,7 +89,8 @@ cp .env.example .env
 | `DB_PASSWORD`   | Database password                                               |                           |
 | `DB_POOL_MIN` / `DB_POOL_MAX` | Connection pool size                              | `0` / `10`                |
 | `DB_TEST_DATABASE` | Database for `npm run test:db`. Its tables are rebuilt on every run. | `matchmaking_db_test` (default: `<DB_DATABASE>_test`) |
-| `JWT_SECRET`    | Token signing secret, used from Phase 3. Use a long random value. |                         |
+| `JWT_SECRET`    | Token signing secret, used from Phase 4. Use a long random value. |                         |
+| `OTP_EXPIRY_MINUTES` | OTP validity window, used from Phase 4                     | `10`                      |
 
 Generate a strong secret with:
 
@@ -117,7 +125,7 @@ npm run db:seed      # reference hobbies only
 npm run db:status    # shows applied / pending migrations
 ```
 
-The schema, ER diagram, delete policy and design decisions are documented in **[docs/database-schema.md](docs/database-schema.md)**.
+The schema, ER diagram, delete policy and design decisions are documented in **[backend/docs/database-schema.md](backend/docs/database-schema.md)**.
 
 ## 9. Running the backend
 
@@ -129,7 +137,7 @@ npm test        # unit tests (no database needed)
 npm run test:db # schema integration tests (needs a database server)
 ```
 
-Database scripts: `db:create`, `db:migrate`, `db:status`, `db:rollback`, `db:rollback:all`, `db:seed`, `db:reset`. See [docs/database-schema.md](docs/database-schema.md#9-migration-commands).
+Database scripts: `db:create`, `db:migrate`, `db:status`, `db:rollback`, `db:rollback:all`, `db:seed`, `db:reset`. See [backend/docs/database-schema.md](backend/docs/database-schema.md#9-migration-commands).
 
 ## 10. Running the frontend
 
@@ -149,7 +157,10 @@ GET /api/v1/health
 ```json
 {
   "success": true,
-  "message": "API is running"
+  "message": "API is running",
+  "version": "v1",
+  "timestamp": "2026-10-04T06:31:06.453Z",
+  "environment": "development"
 }
 ```
 
@@ -157,7 +168,28 @@ GET /api/v1/health
 curl http://localhost:5000/api/v1/health
 ```
 
-A Postman collection is available at `docs/postman/matchmaking-platform.postman_collection.json`.
+### API structure
+
+All endpoints are versioned under `/api/v1`. Responses use one envelope:
+
+```json
+{ "success": true,  "message": "Request successful", "data": {} }
+{ "success": false, "message": "Something went wrong", "errors": [] }
+```
+
+| Route group | Status in Phase 3 |
+| --- | --- |
+| `/api/v1/health` | Implemented |
+| `/api/v1/auth`, `/profile`, `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback`, `/admin` | Planned endpoints registered. Each returns `501 This module will be implemented in a later development phase` |
+| Anything else | `404 API endpoint not found` |
+
+The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md).
+
+A Postman collection (20 requests with test assertions) is at `backend/docs/postman/matchmaking-platform.postman_collection.json`. Run it from the `backend` folder while the server is running:
+
+```bash
+npx newman run docs/postman/matchmaking-platform.postman_collection.json
+```
 
 ## 12. Project structure
 
@@ -165,21 +197,28 @@ A Postman collection is available at `docs/postman/matchmaking-platform.postman_
 project/
 ├── backend/
 │   ├── src/
-│   │   ├── config/          env.js, database.js
-│   │   ├── controllers/     health.controller.js
+│   ├── src/
+│   │   ├── config/          environment.js, database.js, cors.js
+│   │   ├── constants/       api.js, httpStatus.js, messages.js, enums.js
+│   │   ├── controllers/     health + 12 module controllers
 │   │   ├── db/
 │   │   │   ├── migrations/  14 schema migrations
 │   │   │   ├── seeds/       01_hobbies.js
 │   │   │   └── schemaHelpers.js
 │   │   ├── middleware/      errorHandler.js, notFound.js, requestLogger.js
-│   │   ├── models/          (Phase 3)
-│   │   ├── routes/          index.js, health.routes.js
-│   │   ├── services/        health.service.js
-│   │   ├── utils/           ApiError.js, logger.js
-│   │   ├── validators/      (Phase 3+)
-│   │   └── app.js
+│   │   ├── models/          BaseModel + 13 table models
+│   │   ├── routes/          health + 12 module route files
+│   │   ├── services/        health + 13 module services (incl. matching, recommendation, verification)
+│   │   ├── utils/           ApiError, apiResponse, dbErrors, logger, notImplemented
+│   │   ├── validators/      commonValidator + auth/profile/preference validators
+│   │   ├── app.js
+│   │   └── routes.js        /api/v1 route registry
+│   ├── docs/
+│   │   ├── api-architecture.md
+│   │   ├── database-schema.md
+│   │   └── postman/
 │   ├── scripts/             db-create.js, db-reset.js
-│   ├── tests/               unit tests + integration/ (database)
+│   ├── tests/               unit/API tests + integration/ (database)
 │   ├── knexfile.js
 │   ├── server.js
 │   ├── .env.example
@@ -202,20 +241,18 @@ project/
 │   ├── vite.config.js
 │   ├── .env.example
 │   └── package.json
-├── docs/
-│   ├── database-schema.md   schema, ER diagram, design decisions
-│   └── postman/
 ├── .gitignore
 └── README.md
 ```
 
 ## 13. Current development phase
 
-**Phase 2: Database Schema and Relationships (complete)**
+**Phase 3: Backend Project and API Structure (complete)**
 
 | Phase | Scope                                           | Status      |
 | ----- | ----------------------------------------------- | ----------- |
 | 1     | Project setup                                   | ✅ Complete |
 | 2     | Database schema and relationships               | ✅ Complete |
-| 3     | Backend project and API structure               | Next        |
-| 4+    | Authentication (OTP + JWT), profiles, matching, connections, chat, video, admin, notifications | Planned |
+| 3     | Backend project and API structure (base REST API) | ✅ Complete |
+| 4     | Registration, OTP, login & authorization        | Next        |
+| 5+    | Live presence verification, profiles, matching, recommendations, connections, chat, video, admin, notifications | Planned |

@@ -1,5 +1,6 @@
+/** GET /api/v1/health — API liveness. */
 const { Router } = require('express');
-const healthController = require('../controllers/health.controller');
+const healthController = require('../controllers/healthController');
 
 const router = Router();
 
