@@ -4,7 +4,7 @@
  *   node scripts/db-create.js <name>  -> creates <name>
  */
 const knex = require('knex');
-const config = require('../src/config/env');
+const config = require('../src/config/environment');
 const { buildKnexConfig } = require('../src/config/database');
 
 const VALID_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;

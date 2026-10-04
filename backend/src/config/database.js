@@ -7,7 +7,7 @@
  */
 const path = require('path');
 const knex = require('knex');
-const config = require('./env');
+const config = require('./environment');
 const logger = require('../utils/logger');
 
 const CLIENT_DRIVERS = {

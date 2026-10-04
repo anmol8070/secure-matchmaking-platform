@@ -3,7 +3,7 @@
  * Destroys all data in DB_DATABASE, so it refuses to run in production.
  */
 const knex = require('knex');
-const config = require('../src/config/env');
+const config = require('../src/config/environment');
 const { buildKnexConfig } = require('../src/config/database');
 
 async function main() {

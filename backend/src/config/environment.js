@@ -19,9 +19,9 @@ const config = {
   isProduction: nodeEnv === 'production',
   isTest: nodeEnv === 'test',
   port: toInt(process.env.PORT, 5000),
-  apiPrefix: '/api/v1',
 
-  // Comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com"
+  // Comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com".
+  // "*" (any origin) is accepted outside production only.
   corsOrigins: (process.env.CORS_ORIGIN || '')
     .split(',')
     .map((origin) => origin.trim())
@@ -40,10 +40,31 @@ const config = {
     poolMax: toInt(process.env.DB_POOL_MAX, 10),
   },
 
+  // Used from Phase 4 (authentication) onward
   jwt: {
-    // Used from Phase 3 (authentication) onward
     secret: process.env.JWT_SECRET || '',
   },
+  otp: {
+    expiryMinutes: toInt(process.env.OTP_EXPIRY_MINUTES, 10),
+  },
 };
+
+/**
+ * Returns a list of configuration problems that must be fixed before the
+ * server may start in production. Development/test only get warnings.
+ */
+function validateEnvironment(cfg = config) {
+  const problems = [];
+  if (cfg.isProduction) {
+    if (cfg.corsOrigins.length === 0) problems.push('CORS_ORIGIN must be set in production');
+    if (cfg.corsOrigins.includes('*')) problems.push('CORS_ORIGIN must not be "*" in production');
+    if (!cfg.db.url && !(cfg.db.host && cfg.db.database)) {
+      problems.push('Database settings (DATABASE_URL or DB_HOST/DB_DATABASE) must be set in production');
+    }
+  }
+  return problems;
+}
+
+config.validateEnvironment = validateEnvironment;
 
 module.exports = config;

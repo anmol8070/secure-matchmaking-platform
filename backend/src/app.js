@@ -1,41 +1,35 @@
 /**
- * Express application definition (no network listener — see server.js).
+ * Express application: middleware, /api/v1 routes, 404 and error handling.
+ * No business logic and no network listener here (see server.js).
  */
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 
-const config = require('./config/env');
+const { buildCorsOptions } = require('./config/cors');
+const { API_PREFIX, REQUEST_BODY_LIMIT } = require('./constants/api');
 const requestLogger = require('./middleware/requestLogger');
 const notFound = require('./middleware/notFound');
 const errorHandler = require('./middleware/errorHandler');
 const apiRoutes = require('./routes');
 
-const app = express();
+function createApp({ corsOrigins } = {}) {
+  const app = express();
 
-app.disable('x-powered-by');
-app.use(helmet());
+  app.disable('x-powered-by');
+  app.use(helmet());
+  app.use(cors(buildCorsOptions(corsOrigins)));
+  app.use(requestLogger);
+  app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
+  app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      // Allow non-browser clients (Postman, curl, server-to-server) with no Origin header
-      if (!origin || config.corsOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, false);
-    },
-    credentials: true,
-  })
-);
+  app.use(API_PREFIX, apiRoutes);
 
-app.use(requestLogger);
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use(notFound);
+  app.use(errorHandler);
 
-app.use(config.apiPrefix, apiRoutes);
+  return app;
+}
 
-app.use(notFound);
-app.use(errorHandler);
-
-module.exports = app;
+module.exports = createApp();
+module.exports.createApp = createApp;
