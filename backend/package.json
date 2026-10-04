@@ -7,7 +7,15 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "jest"
+    "test": "jest --testPathIgnorePatterns=/tests/integration/",
+    "test:db": "jest --runInBand tests/integration",
+    "db:create": "node scripts/db-create.js",
+    "db:migrate": "knex migrate:latest",
+    "db:rollback": "knex migrate:rollback",
+    "db:rollback:all": "knex migrate:rollback --all",
+    "db:status": "knex migrate:list",
+    "db:seed": "knex seed:run",
+    "db:reset": "node scripts/db-reset.js"
   },
   "engines": {
     "node": ">=18"

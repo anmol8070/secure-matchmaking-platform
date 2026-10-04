@@ -44,7 +44,7 @@ React components contain only presentation logic. All API access goes through `f
 ## 4. Prerequisites
 
 - Node.js 18+ (developed on Node 24) and npm
-- PostgreSQL 14+ **or** MySQL 8+. This is optional in Phase 1: the API starts without a database and logs a warning.
+- PostgreSQL 12+ (recommended), MySQL 8.0.16+, or MariaDB 10.4+. The API starts without a database and logs a warning, but migrations and the schema tests need one.
 
 ## 5. Backend setup
 
@@ -81,6 +81,7 @@ cp .env.example .env
 | `DB_USERNAME`   | Database user                                                   |                           |
 | `DB_PASSWORD`   | Database password                                               |                           |
 | `DB_POOL_MIN` / `DB_POOL_MAX` | Connection pool size                              | `0` / `10`                |
+| `DB_TEST_DATABASE` | Database for `npm run test:db`. Its tables are rebuilt on every run. | `matchmaking_db_test` (default: `<DB_DATABASE>_test`) |
 | `JWT_SECRET`    | Token signing secret, used from Phase 3. Use a long random value. |                         |
 
 Generate a strong secret with:
@@ -101,19 +102,22 @@ Anything in `frontend/.env` is shipped to the browser. Never put secrets there.
 
 The connection layer is in `backend/src/config/database.js`:
 
-- Set `DB_CLIENT=postgres` or `DB_CLIENT=mysql`. Both drivers (`pg`, `mysql2`) are installed, so switching engines needs no code changes.
+- Set `DB_CLIENT=postgres` or `DB_CLIENT=mysql` (`mysql` also covers MariaDB). Both drivers (`pg`, `mysql2`) are installed, so switching engines needs no code changes.
 - Credentials are read only from environment variables.
 - On startup the server runs `SELECT 1` and logs whether the connection succeeded.
-- **Application tables are not created yet.** Schema and migrations come in Phase 2.
+- The schema (13 tables) is built by Knex migrations in `backend/src/db/migrations`.
 
-Create an empty database before running against a real server:
+To set up a fresh database:
 
-```sql
--- PostgreSQL
-CREATE DATABASE matchmaking_db;
--- MySQL
-CREATE DATABASE matchmaking_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```bash
+cd backend
+npm run db:create    # creates DB_DATABASE if missing
+npm run db:migrate   # creates all tables, foreign keys and indexes
+npm run db:seed      # reference hobbies only
+npm run db:status    # shows applied / pending migrations
 ```
+
+The schema, ER diagram, delete policy and design decisions are documented in **[docs/database-schema.md](docs/database-schema.md)**.
 
 ## 9. Running the backend
 
@@ -121,8 +125,11 @@ CREATE DATABASE matchmaking_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 cd backend
 npm run dev     # development, auto-restart
 npm start       # plain start
-npm test        # unit tests
+npm test        # unit tests (no database needed)
+npm run test:db # schema integration tests (needs a database server)
 ```
+
+Database scripts: `db:create`, `db:migrate`, `db:status`, `db:rollback`, `db:rollback:all`, `db:seed`, `db:reset`. See [docs/database-schema.md](docs/database-schema.md#9-migration-commands).
 
 ## 10. Running the frontend
 
@@ -160,14 +167,20 @@ project/
 │   ├── src/
 │   │   ├── config/          env.js, database.js
 │   │   ├── controllers/     health.controller.js
+│   │   ├── db/
+│   │   │   ├── migrations/  14 schema migrations
+│   │   │   ├── seeds/       01_hobbies.js
+│   │   │   └── schemaHelpers.js
 │   │   ├── middleware/      errorHandler.js, notFound.js, requestLogger.js
-│   │   ├── models/          (Phase 2)
+│   │   ├── models/          (Phase 3)
 │   │   ├── routes/          index.js, health.routes.js
 │   │   ├── services/        health.service.js
 │   │   ├── utils/           ApiError.js, logger.js
 │   │   ├── validators/      (Phase 3+)
 │   │   └── app.js
-│   ├── tests/
+│   ├── scripts/             db-create.js, db-reset.js
+│   ├── tests/               unit tests + integration/ (database)
+│   ├── knexfile.js
 │   ├── server.js
 │   ├── .env.example
 │   └── package.json
@@ -189,17 +202,20 @@ project/
 │   ├── vite.config.js
 │   ├── .env.example
 │   └── package.json
-├── docs/postman/
+├── docs/
+│   ├── database-schema.md   schema, ER diagram, design decisions
+│   └── postman/
 ├── .gitignore
 └── README.md
 ```
 
 ## 13. Current development phase
 
-**Phase 1: Project Setup (complete)**
+**Phase 2: Database Schema and Relationships (complete)**
 
 | Phase | Scope                                           | Status      |
 | ----- | ----------------------------------------------- | ----------- |
 | 1     | Project setup                                   | ✅ Complete |
-| 2     | Database schema and relationships               | Next        |
-| 3+    | Authentication (OTP + JWT), profiles, matching, connections, chat, video, admin, notifications | Planned |
+| 2     | Database schema and relationships               | ✅ Complete |
+| 3     | Backend project and API structure               | Next        |
+| 4+    | Authentication (OTP + JWT), profiles, matching, connections, chat, video, admin, notifications | Planned |
