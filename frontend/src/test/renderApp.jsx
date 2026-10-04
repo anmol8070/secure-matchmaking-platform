@@ -21,7 +21,7 @@ export function mockApi(routes = {}) {
   global.fetch = vi.fn(async (url, options = {}) => {
     const path = new URL(url).pathname.replace(/^\/api\/v1/, '');
     const method = options.method || 'GET';
-    const body = options.body ? JSON.parse(options.body) : undefined;
+    const body = options.body instanceof FormData ? options.body : options.body ? JSON.parse(options.body) : undefined;
     calls.push({ method, path, body, headers: options.headers || {} });
 
     let handler = handlers[`${method} ${path}`];

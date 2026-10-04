@@ -20,6 +20,9 @@ function UserLayout() {
               <NavLink to={USER_PATHS.DASHBOARD} className={navClass}>
                 Dashboard
               </NavLink>
+              <NavLink to={USER_PATHS.PROFILE} className={navClass}>
+                Profile
+              </NavLink>
               <NavLink to={USER_PATHS.MATCHES} className={navClass}>
                 Matches
               </NavLink>

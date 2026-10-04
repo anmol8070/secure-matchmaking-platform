@@ -7,6 +7,8 @@ export const USER_PATHS = {
   LOGIN_VERIFICATION: '/login-verification',
   DASHBOARD: '/dashboard',
   PROFILE: '/profile',
+  PROFILE_CREATE: '/profile/create',
+  PROFILE_EDIT: '/profile/edit',
   PREFERENCES: '/preferences',
   MATCHES: '/matches',
   CONNECTIONS: '/connections',

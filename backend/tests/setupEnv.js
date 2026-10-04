@@ -17,6 +17,9 @@ const defaults = {
   LOGIN_VERIFICATION_MAX_ATTEMPTS: '5',
   AUTH_RATE_LIMIT_MAX: '100000',
   AUTH_FAILED_ATTEMPTS_MAX: '100000',
+  // Uploads go to a throw-away folder; a small size limit keeps oversize tests fast.
+  UPLOADS_DIR: require('path').join(require('os').tmpdir(), 'matchmaking-test-uploads'),
+  PROFILE_IMAGE_MAX_SIZE_MB: '1',
 };
 
 for (const [key, value] of Object.entries(defaults)) {

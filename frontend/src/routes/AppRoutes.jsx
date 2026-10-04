@@ -9,6 +9,9 @@ import OtpVerification from '../pages/user/OtpVerification.jsx';
 import Login from '../pages/user/Login.jsx';
 import LoginVerification from '../pages/user/LoginVerification.jsx';
 import Dashboard from '../pages/user/Dashboard.jsx';
+import ProfilePage from '../pages/user/profile/ProfilePage.jsx';
+import ProfileCreate from '../pages/user/profile/ProfileCreate.jsx';
+import ProfileEdit from '../pages/user/profile/ProfileEdit.jsx';
 
 import AdminLogin from '../pages/admin/AdminLogin.jsx';
 import AdminDashboard from '../pages/admin/AdminDashboard.jsx';
@@ -20,7 +23,6 @@ import { ADMIN_PATHS, USER_PATHS } from './paths.js';
 
 // Protected feature pages built in later phases.
 const UPCOMING_PAGES = [
-  [USER_PATHS.PROFILE, 'Your profile'],
   [USER_PATHS.PREFERENCES, 'Preferences'],
   [USER_PATHS.MATCHES, 'Matches'],
   [USER_PATHS.CONNECTIONS, 'Connections'],
@@ -46,6 +48,9 @@ function AppRoutes() {
 
         <Route element={<ProtectedRoute />}>
           <Route path={USER_PATHS.DASHBOARD} element={<Dashboard />} />
+          <Route path={USER_PATHS.PROFILE} element={<ProfilePage />} />
+          <Route path={USER_PATHS.PROFILE_CREATE} element={<ProfileCreate />} />
+          <Route path={USER_PATHS.PROFILE_EDIT} element={<ProfileEdit />} />
           {UPCOMING_PAGES.map(([path, title]) => (
             <Route key={path} path={path} element={<PagePlaceholder title={title} />} />
           ))}

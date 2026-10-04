@@ -97,6 +97,9 @@ cp .env.example .env
 | `LOGIN_VERIFICATION_EXPIRY_MINUTES`, `LOGIN_VERIFICATION_MAX_ATTEMPTS` | Live verification session | `5`, `5` |
 | `AUTH_RATE_LIMIT_*`, `AUTH_FAILED_ATTEMPTS_MAX` | Rate limits | see `.env.example` |
 | `DEFAULT_COUNTRY_CODE`, `TRUST_PROXY` | Mobile prefix; reverse-proxy hops | `+91`, off |
+| `STORAGE_PROVIDER`, `UPLOADS_DIR` | Profile picture storage (`local` = disk, served at `/media`) | `local`, `uploads` |
+| `MEDIA_PUBLIC_BASE_URL` | Public origin for picture URLs (https in production) | `http://localhost:5000` |
+| `PROFILE_IMAGE_MAX_SIZE_MB`, `PROFILE_IMAGE_MAX_DIMENSION` | Upload limit; stored image size | `5`, `1024` |
 
 Generate a strong secret with:
 
@@ -188,11 +191,12 @@ All endpoints are versioned under `/api/v1`. Responses use one envelope:
 | `/api/v1/health` | Implemented (public) |
 | `/api/v1/auth` | **Implemented (Phase 4)** — register, OTP, password/OTP login, live verification, logout, `/me` |
 | `/api/v1/admin/login` | Implemented (admins only, followed by live verification) |
-| `/profile`, `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
+| `/api/v1/profile` | **Implemented (Phase 5)** — create, view, edit own profile; upload/replace/remove profile picture (Bearer token) |
+| `/preferences`, `/hobbies`, `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
 | `/admin/*` | Require an **admin** token; `501` placeholders |
 | Anything else | `404 API endpoint not found` |
 
-The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**.
+The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**; profiles and profile pictures in **[backend/docs/profile-management.md](backend/docs/profile-management.md)**.
 
 ### Trying the login flow locally
 
@@ -201,12 +205,14 @@ The endpoint list, error codes and middleware are documented in [backend/docs/ap
 3. Log in. The browser asks for camera permission; take a photo with exactly one face visible. Login completes only after this step.
 4. For the admin panel, promote a registered account with `npm run admin:promote -- <email>` (in `backend/`), then use http://localhost:5173/admin/login.
 
-**Profile Picture and Login Verification Photo are independent features.** The verification photo is checked in the browser for face presence only and never leaves the device.
+5. After login, open **Profile** to complete your profile and add a picture from your gallery, files or camera (any image — it does not need a face).
 
-A Postman collection (32 requests, 60 assertions — the full authentication flow) is at `backend/docs/postman/matchmaking-platform.postman_collection.json`. Run it from the `backend` folder while the server is running:
+**Profile Picture and Login Verification Photo are independent features.** The verification photo is checked in the browser for face presence only and never leaves the device; the profile picture is uploaded, stored and displayed, and is never compared with anything.
+
+A Postman collection (43 requests, 84 assertions — authentication and profiles) is at `backend/docs/postman/matchmaking-platform.postman_collection.json`. Run it from the `backend` folder while the server is running:
 
 ```bash
-npx newman run docs/postman/matchmaking-platform.postman_collection.json
+npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman
 ```
 
 ## 12. Project structure
@@ -234,6 +240,7 @@ project/
 │   ├── docs/
 │   │   ├── api-architecture.md
 │   │   ├── authentication-flow.md
+│   │   ├── profile-management.md
 │   │   ├── database-schema.md
 │   │   └── postman/
 │   ├── scripts/             db-create.js, db-reset.js
@@ -266,7 +273,7 @@ project/
 
 ## 13. Current development phase
 
-**Phase 4: Registration, OTP, Login & Authorization (complete)**
+**Phase 5: Profile Creation, Edit, View & Profile Picture (complete)**
 
 | Phase | Scope                                           | Status      |
 | ----- | ----------------------------------------------- | ----------- |
@@ -274,5 +281,5 @@ project/
 | 2     | Database schema and relationships               | ✅ Complete |
 | 3     | Backend project and API structure (base REST API) | ✅ Complete |
 | 4     | Registration, OTP, login, live verification & authorization | ✅ Complete |
-| 5     | Profile creation, edit, view & profile picture  | Next        |
+| 5     | Profile creation, edit, view & profile picture  | ✅ Complete |
 | 6+    | Preferences, matching, recommendations, connections, chat, video, admin, notifications | Planned |

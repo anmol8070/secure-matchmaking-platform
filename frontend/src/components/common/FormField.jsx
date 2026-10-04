@@ -1,10 +1,18 @@
-/** Labelled input with an accessible error message. */
-function FormField({ id, label, error, hint, ...inputProps }) {
+/**
+ * Labelled input, select or textarea with an accessible error message.
+ *   <FormField id="name" label="Name" … />
+ *   <FormField as="select" id="gender" label="Gender">…options…</FormField>
+ *   <FormField as="textarea" id="bio" label="Bio" rows={5} />
+ */
+function FormField({ id, label, error, hint, as = 'input', children, ...inputProps }) {
   const describedBy = [error && `${id}-error`, hint && `${id}-hint`].filter(Boolean).join(' ') || undefined;
+  const Control = as;
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
-      <input id={id} name={id} aria-invalid={Boolean(error)} aria-describedby={describedBy} {...inputProps} />
+      <Control id={id} name={id} aria-invalid={Boolean(error)} aria-describedby={describedBy} {...inputProps}>
+        {children}
+      </Control>
       {hint && (
         <small id={`${id}-hint`} className="muted">
           {hint}

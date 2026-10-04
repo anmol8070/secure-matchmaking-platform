@@ -23,13 +23,16 @@ let pgTypesConfigured = false;
 
 /**
  * pg returns BIGINT and NUMERIC as strings by default. Our ids are BIGINT and
- * match scores are NUMERIC(5,2); both fit safely in a JS number.
+ * match scores are NUMERIC(5,2); both fit safely in a JS number. DATE columns
+ * (e.g. date_of_birth) stay 'YYYY-MM-DD' strings — converting them to a JS Date
+ * would apply the server time zone and could shift the day.
  */
 function configurePgTypes() {
   if (pgTypesConfigured) return;
   const { types } = require('pg');
   types.setTypeParser(types.builtins.INT8, (value) => Number.parseInt(value, 10));
   types.setTypeParser(types.builtins.NUMERIC, (value) => Number.parseFloat(value));
+  types.setTypeParser(types.builtins.DATE, (value) => value);
   pgTypesConfigured = true;
 }
 
@@ -74,8 +77,8 @@ function buildKnexConfig(dbConfig = config.db, options = {}) {
   const pool = { min: dbConfig.poolMin, max: dbConfig.poolMax };
 
   if (isMysql) {
-    // Store and read all DATETIME values as UTC; return DECIMAL as numbers.
-    Object.assign(connection, { timezone: 'Z', charset: 'utf8mb4', decimalNumbers: true });
+    // Store and read all DATETIME values as UTC; DECIMAL as numbers; DATE as 'YYYY-MM-DD'.
+    Object.assign(connection, { timezone: 'Z', charset: 'utf8mb4', decimalNumbers: true, dateStrings: ['DATE'] });
     pool.afterCreate = (conn, done) => {
       conn.query("SET time_zone = '+00:00'", (err) => done(err, conn));
     };

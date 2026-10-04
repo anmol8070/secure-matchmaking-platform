@@ -1,6 +1,6 @@
 # API Architecture
 
-Backend architecture of the Secure Social Networking and Digital Matchmaking Platform: the base REST API (Phase 3) plus authentication and authorization (Phase 4). For the database design see [database-schema.md](database-schema.md); for registration, OTP, login and live verification see [authentication-flow.md](authentication-flow.md).
+Backend architecture of the Secure Social Networking and Digital Matchmaking Platform: the base REST API (Phase 3) plus authentication and authorization (Phase 4). For the database design see [database-schema.md](database-schema.md); for registration, OTP, login and live verification see [authentication-flow.md](authentication-flow.md); for profiles and profile pictures (Phase 5) see [profile-management.md](profile-management.md).
 
 ## 1. Backend architecture
 
@@ -97,7 +97,7 @@ A breaking change will add `/api/v2` as a new router mounted beside v1, so exist
 | --- | --- |
 | `/health` | ✅ `GET /` (public) |
 | `/auth` | ✅ `POST /register`, `POST /send-otp`, `POST /verify-otp`, `POST /login`, `POST /login/send-otp`, `POST /login/verify-otp`, `POST /login-verification/complete` (live presence result → JWT) — public; `POST /logout`, `GET /me` — Bearer token |
-| `/profile` | `GET /`, `POST /`, `PUT /`, `PUT /photo`, `DELETE /photo`, `GET /:userId` |
+| `/profile` | ✅ `GET /`, `POST /`, `PUT /`, `PUT /photo` (multipart, field `photo`), `DELETE /photo` — own profile only (Phase 5); `GET /:userId` → 501 |
 | `/preferences` | `GET /`, `PUT /` |
 | `/hobbies` | `GET /`, `GET /me`, `PUT /me` |
 | `/matches` | `GET /`, `GET /:userId` |
@@ -185,6 +185,9 @@ Route-level middleware (Phase 4):
 | `requireRole(...roles)` | `middleware/roleMiddleware.js` | Role-based authorization (`403` for the wrong role) |
 | `authLimiter` | `middleware/rateLimiter.js` | All `/auth` requests per IP |
 | `failedAttemptLimiter` | `middleware/rateLimiter.js` | Failed password/OTP/verification checks per IP + account (no account lockout) |
+| `uploadProfileImage` | `middleware/uploadMiddleware.js` | multer (memory) for `PUT /profile/photo`: one file, field `photo`, size limit → 413 (Phase 5) |
+
+Static media (local storage only): `GET /media/<key>` serves uploaded profile pictures from `UPLOADS_DIR`, with long-lived caching and `Cross-Origin-Resource-Policy: cross-origin` so the frontend origin can display them.
 
 ## 8. Validation layer
 
@@ -289,8 +292,12 @@ Read only by `config/environment.js`; template in `.env.example`.
 | `LOGIN_VERIFICATION_EXPIRY_MINUTES`, `LOGIN_VERIFICATION_MAX_ATTEMPTS` | no | `5`, `5` | Live verification session |
 | `AUTH_RATE_LIMIT_WINDOW_MINUTES`, `AUTH_RATE_LIMIT_MAX`, `AUTH_FAILED_ATTEMPTS_MAX` | no | `15`, `100`, `10` | Rate limits |
 | `DEFAULT_COUNTRY_CODE` | no | `+91` | Prefix for 10-digit mobile numbers |
+| `STORAGE_PROVIDER` | no | `local` | Profile picture storage backend |
+| `UPLOADS_DIR` | no | `uploads` | Folder for the local storage provider |
+| `MEDIA_PUBLIC_BASE_URL` | **production** (https) | `http://localhost:<PORT>` | Public origin used in picture URLs |
+| `PROFILE_IMAGE_MAX_SIZE_MB`, `PROFILE_IMAGE_MAX_DIMENSION` | no | `5`, `1024` | Upload size limit; stored image size |
 
-**Startup checks:** in production, `server.js` refuses to start (exit code 1) if `CORS_ORIGIN` is missing or `*`, if no database is configured, if `JWT_SECRET`/`OTP_SECRET` are missing, placeholders or shorter than 32 characters, or if `OTP_PROVIDER=dev`.
+**Startup checks:** in production, `server.js` refuses to start (exit code 1) if `CORS_ORIGIN` is missing or `*`, if no database is configured, if `JWT_SECRET`/`OTP_SECRET` are missing, placeholders or shorter than 32 characters, if `OTP_PROVIDER=dev`, or if `MEDIA_PUBLIC_BASE_URL` is not an https URL.
 
 ## 13. Security baseline
 
@@ -312,7 +319,7 @@ Read only by `config/environment.js`; template in `.env.example`.
 | Phase | Builds on |
 | --- | --- |
 | 4 — Registration, OTP, login & authorization | ✅ Done: `authService`, `otpService`, `sessionService`, `verificationService`, `requireAuth` / `requireRole` |
-| Profiles & profile picture | `profileRoutes`, `profileService`, multipart upload middleware |
+| 5 — Profiles & profile picture | ✅ Done: `profileService`, `profilePhotoService`, `storage/`, `uploadMiddleware` |
 | Preferences & hobbies | `preferenceService`, `hobbyService` |
 | Matching & recommendation | `matchingService` → `matches`; `recommendationService` + `activity_feedback` |
 | Connections, chat & video | `connectionService`, `messageService`, then Socket.IO / WebRTC signalling |
@@ -332,4 +339,4 @@ Routes, middleware and error handling stay as they are.
 | --- | --- |
 | `npm test` | Unit and API tests, no database needed. Covers: health, versioning, 404, every placeholder endpoint (501), validation (422), malformed and oversized bodies, CORS (allowed, preflight, blocked, `*`), response format, the error handler (all status mappings, DB error translation, production hiding), environment loading and production checks, logger redaction, architecture rules, and the real `server.js` starting up |
 | `npm run test:db` | Against a real database: connection module, models mapped to tables, enum constants matching the CHECK constraints, and the full Phase 2 schema suite |
-| Postman / Newman | `docs/postman/matchmaking-platform.postman_collection.json` — 32 requests, 60 assertions covering the full authentication flow (needs `OTP_PROVIDER=dev`). Run with `npx newman run docs/postman/matchmaking-platform.postman_collection.json` while the server is running |
+| Postman / Newman | `docs/postman/matchmaking-platform.postman_collection.json` — 43 requests, 84 assertions covering authentication and profiles (needs `OTP_PROVIDER=dev`; run with `--working-dir docs/postman` for the upload files). Run with `npx newman run docs/postman/matchmaking-platform.postman_collection.json` while the server is running |

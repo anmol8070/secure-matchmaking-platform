@@ -4,7 +4,7 @@ function loadConfig(env) {
   let config;
   try {
     for (const key of Object.keys(process.env)) {
-      if (/^(NODE_ENV|PORT|CORS_ORIGIN|DB_|DATABASE_URL|JWT_|OTP_|LOGIN_|AUTH_|TRUST_PROXY|DEFAULT_COUNTRY)/.test(key)) delete process.env[key];
+      if (/^(NODE_ENV|PORT|CORS_ORIGIN|DB_|DATABASE_URL|JWT_|OTP_|LOGIN_|AUTH_|TRUST_PROXY|DEFAULT_COUNTRY|MEDIA_|STORAGE_|UPLOADS_|PROFILE_IMAGE_)/.test(key)) delete process.env[key];
     }
     Object.assign(process.env, env);
     jest.isolateModules(() => {
@@ -70,6 +70,7 @@ describe('environment configuration', () => {
       CORS_ORIGIN: 'https://app.example.com',
       DATABASE_URL: 'postgres://u:p@db:5432/app',
       JWT_SECRET: 'j'.repeat(40), OTP_SECRET: 'o'.repeat(40), OTP_PROVIDER: 'smtp',
+      MEDIA_PUBLIC_BASE_URL: 'https://api.example.com',
     });
     expect(config.validateEnvironment()).toEqual([]);
   });
@@ -82,7 +83,15 @@ describe('environment configuration', () => {
       'JWT_SECRET must be a random value of at least 32 characters in production',
       'OTP_SECRET must be a random value of at least 32 characters in production',
       'OTP_PROVIDER=dev is for development only — configure a real OTP provider',
+      'MEDIA_PUBLIC_BASE_URL must be set to the public https:// origin that serves media in production',
     ]);
+  });
+
+  it('reads media and profile image settings', () => {
+    const config = loadConfig({ PORT: '7000', PROFILE_IMAGE_MAX_SIZE_MB: '2.5', UPLOADS_DIR: 'data/uploads' });
+    expect(config.media).toMatchObject({ storageProvider: 'local', publicBaseUrl: 'http://localhost:7000', publicBaseUrlConfigured: false });
+    expect(config.media.uploadsDir).toBe(require('path').resolve(__dirname, '..', 'data/uploads'));
+    expect(config.profileImage).toEqual({ maxSizeMb: 2.5, maxDimension: 1024 });
   });
 
   it('uses an ephemeral signing secret outside production when none is configured', () => {
@@ -101,6 +110,7 @@ describe('environment configuration', () => {
       DB_HOST: 'h',
       DB_DATABASE: 'd',
       JWT_SECRET: 'j'.repeat(40), OTP_SECRET: 'o'.repeat(40), OTP_PROVIDER: 'smtp',
+      MEDIA_PUBLIC_BASE_URL: 'https://api.example.com',
     });
     expect(prod.validateEnvironment()).toEqual(['CORS_ORIGIN must not be "*" in production']);
 

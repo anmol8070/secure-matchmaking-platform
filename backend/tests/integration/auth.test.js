@@ -565,7 +565,7 @@ describe('authentication and authorization middleware', () => {
   });
 
   it('lets users reach user-protected APIs (placeholders return 501)', async () => {
-    const res = await get('/profile', userToken);
+    const res = await get('/matches', userToken);
     expect(res.status).toBe(501);
     expect(res.body).toEqual(NOT_IMPLEMENTED);
   });

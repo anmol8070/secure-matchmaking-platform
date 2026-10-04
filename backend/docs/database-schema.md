@@ -245,6 +245,8 @@ Constraints:
 
 ### 4.2 profiles
 
+> Used unchanged by the Phase 5 profile API ([profile-management.md](profile-management.md)): `age` and `location` are computed from `date_of_birth` and `city`/`state`/`country`, and `profile_photo_url` holds a storage reference such as `/media/profile-photos/<uuid>.webp` (never image data).
+
 Public profile, 1:1 with `users`.
 
 | Column | Type | Null | Notes |
