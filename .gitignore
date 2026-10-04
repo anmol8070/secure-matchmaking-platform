@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment files (keep the committed .env.example templates)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Temporary / OS / editor files
+tmp/
+temp/
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
