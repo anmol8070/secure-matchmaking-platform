@@ -36,8 +36,10 @@
     "jsonwebtoken": "^9.0.3",
     "knex": "^3.3.0",
     "morgan": "^1.12.1",
+    "multer": "^2.4.0",
     "mysql2": "^3.24.5",
     "pg": "^8.23.1",
+    "sharp": "^0.35.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {

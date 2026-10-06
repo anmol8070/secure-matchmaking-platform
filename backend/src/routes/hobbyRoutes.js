@@ -1,6 +1,7 @@
 /**
- * /api/v1/hobbies — hobby catalogue and the current user's hobbies.
- * All endpoints are Phase 3 placeholders (HTTP 501).
+ * /api/v1/hobbies — the hobby catalogue (active hobbies). Requires
+ * authentication (mounted behind requireAuth). The user's own selection lives
+ * under /api/v1/preferences/hobbies.
  */
 const { Router } = require('express');
 const hobbies = require('../controllers/hobbyController');
@@ -8,7 +9,5 @@ const hobbies = require('../controllers/hobbyController');
 const router = Router();
 
 router.get('/', hobbies.listHobbies);
-router.get('/me', hobbies.getMyHobbies);
-router.put('/me', hobbies.setMyHobbies);
 
 module.exports = router;

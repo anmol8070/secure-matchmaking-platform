@@ -95,6 +95,41 @@ describe('layered structure', () => {
     expect(offenders).toEqual(['config/database.js']);
   });
 
+  it('keeps profile pictures independent of login verification (Phase 5)', () => {
+    const profileSide = [
+      'services/profileService.js',
+      'services/profilePhotoService.js',
+      'controllers/profileController.js',
+      'routes/profileRoutes.js',
+      'middleware/uploadMiddleware.js',
+    ];
+    for (const file of profileSide) {
+      expect({ file, imports: read(file).match(/require([^)]*verification[^)]*)/gi) }).toEqual({ file, imports: null });
+    }
+    for (const file of ['services/verificationService.js', 'services/authService.js', 'services/sessionService.js']) {
+      expect({ file, imports: read(file).match(/require([^)]*(profile|photo|storage)[^)]*)/gi) }).toEqual({ file, imports: null });
+    }
+  });
+
+  it('contains no face recognition / face comparison logic anywhere', () => {
+    const offenders = [];
+    const scan = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) scan(full);
+        else if (/.(js|jsx)$/.test(entry.name)) {
+          const code = fs.readFileSync(full, 'utf8');
+          if (/faceMatch|compareFaces?|faceRecogni[sz]|matchFace|faceEmbedding|faceDescriptor|verifyUserIdentity|euclideanDistance/i.test(code)) {
+            offenders.push(path.relative(SRC, full));
+          }
+        }
+      }
+    };
+    scan(SRC);
+    scan(path.resolve(SRC, '../../frontend/src'));
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps login verification independent of profiles and profile photos', () => {
     const verification = read('services/verificationService.js');
     const profile = read('services/profileService.js');

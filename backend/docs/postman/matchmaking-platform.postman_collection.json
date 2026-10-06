@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Matchmaking Platform API",
-    "description": "Phase 4 — authentication (registration, OTP, login, live presence verification, JWT, logout) plus the Phase 3 base API.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded.",
+    "description": "Phases 3-6: base API, authentication (registration, OTP, login, live presence verification, JWT, logout), profiles with profile pictures, and preferences, hobbies and quiz answers.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -31,6 +31,18 @@
     },
     {
       "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "hobbyA",
+      "value": ""
+    },
+    {
+      "key": "hobbyB",
+      "value": ""
+    },
+    {
+      "key": "hobbyC",
       "value": ""
     }
   ],
@@ -108,7 +120,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/profile",
+            "url": "{{baseUrl}}/matches",
             "description": "Every module except /health, /auth and /admin/login requires a Bearer access token."
           },
           "event": [
@@ -687,7 +699,7 @@
                 "value": "Bearer {{accessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/profile"
+            "url": "{{baseUrl}}/matches"
           },
           "event": [
             {
@@ -786,7 +798,903 @@
       ]
     },
     {
-      "name": "6. Login with OTP",
+      "name": "6. Profile (Phase 5)",
+      "item": [
+        {
+          "name": "GET /profile before creating → 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile",
+            "description": "Requires Bearer token. Returns the signed-in user's own profile; 404 until it is created."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Profile not found. Create your profile first.\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /profile — invalid (under 18, missing name) → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dateOfBirth\": \"2015-01-01\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('field errors', () => pm.expect(pm.response.json().errors.map(e => e.field)).to.include.members(['body.name', 'body.dateOfBirth']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /profile — create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Asha Patil\",\n  \"dateOfBirth\": \"1996-08-15\",\n  \"gender\": \"female\",\n  \"city\": \"Kolhapur\",\n  \"state\": \"Maharashtra\",\n  \"country\": \"India\",\n  \"education\": \"M.Tech\",\n  \"occupation\": \"Software Developer\",\n  \"lifestyle\": \"Active, vegetarian\",\n  \"bio\": \"Loves trekking.\"\n}"
+            },
+            "description": "Requires Bearer token. JSON body.\nRequired: name (2-100 chars), dateOfBirth (YYYY-MM-DD, age 18-100).\nOptional (null or \"\" clears): gender (male|female|non_binary|other|prefer_not_to_say), city, state, country, education, occupation, lifestyle, bio (max 2000).\nThe user is taken from the token, never from the body. Returns the profile with computed age, location and profileCompletion. 409 if it already exists."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('computed age and location', () => { pm.expect(d.age).to.be.a('number'); pm.expect(d.location).to.eql('Kolhapur, Maharashtra, India'); pm.expect(d.profilePhotoUrl).to.eql(null); });",
+                  "pm.test('no account/security data', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/password|hash|otp|token|role|email/i));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /profile again → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Asha Patil\",\n  \"dateOfBirth\": \"1996-08-15\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /profile — update",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"occupation\": \"Data Engineer\",\n  \"bio\": null\n}"
+            },
+            "description": "Requires Bearer token. JSON body with any subset of the profile fields; only provided fields change."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Profile updated successfully\"));",
+                  "pm.test('updated', () => pm.expect(pm.response.json().data).to.include({ occupation: 'Data Engineer', bio: null }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /profile — changing userId/role → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hacker\",\n  \"userId\": 1,\n  \"role\": \"admin\"\n}"
+            },
+            "description": "Account and security fields (userId, user_id, role, status, password_hash, email, profile_photo_url) are rejected."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /profile/photo — upload (no face needed)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile/photo",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "photo",
+                  "type": "file",
+                  "src": "assets/landscape-no-face.png"
+                }
+              ]
+            },
+            "description": "Requires Bearer token. multipart/form-data with one file in the \"photo\" field.\nJPG, PNG or WEBP up to PROFILE_IMAGE_MAX_SIZE_MB (default 5 MB). Any image is accepted: no face or human detection.\nStored as WEBP (max 1024 px, metadata removed). Replaces the previous picture.\nErrors: 415 unsupported type, 413 too large, 422 missing or corrupt file, 404 no profile yet."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Profile picture updated successfully\"));",
+                  "pm.test('photo url', () => pm.expect(pm.response.json().data.profilePhotoUrl).to.include('/media/profile-photos/'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /profile/photo — text renamed to .png → 415",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile/photo",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "photo",
+                  "type": "file",
+                  "src": "assets/not-an-image.png"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 415', () => pm.response.to.have.status(415));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Unsupported image type. Use a JPG, PNG or WEBP image.\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('complete', () => pm.expect(pm.response.json().data.profileCompletion.percentage).to.be.above(80));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /profile/photo",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile/photo",
+            "description": "Requires Bearer token. Clears the picture; the profile stays."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Profile picture removed\"));",
+                  "pm.test('cleared', () => pm.expect(pm.response.json().data.profilePhotoUrl).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /profile without token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Authentication required\" }));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Preferences, hobbies and quiz (Phase 6)",
+      "item": [
+        {
+          "name": "GET /hobbies — active hobby catalogue",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/hobbies",
+            "description": "Requires Bearer token. Active hobbies as [{ id, name }], alphabetical. Users select hobbies by id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json().data;",
+                  "pm.test('id + name only', () => pm.expect(Object.keys(list[0])).to.eql(['id', 'name']));",
+                  "pm.collectionVariables.set('hobbyA', list[0].id); pm.collectionVariables.set('hobbyB', list[1].id); pm.collectionVariables.set('hobbyC', list[2].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /preferences — nothing saved yet",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences",
+            "description": "Requires Bearer token. Preferences + selected hobbies + quiz answers. isSet is false until preferences are created."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('not set', () => pm.expect(pm.response.json().data).to.include({ isSet: false }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /preferences/options",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/options",
+            "description": "Requires Bearer token. Allowed food preferences, partner genders, age range, hobby limit and text lengths."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('options', () => pm.expect(pm.response.json().data.foodPreferences.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences before creating → 404",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredFood\": \"vegan\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /preferences — invalid → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredFood\": \"pizza\",\n  \"partnerMinAge\": 40,\n  \"partnerMaxAge\": 30\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('field errors', () => pm.expect(pm.response.json().errors.map(e => e.field)).to.include('body.preferredFood'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /preferences — create (with hobbies and quiz, one transaction)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredLocation\": \"Kolhapur, Maharashtra\",\n  \"preferredEducation\": \"M.Tech\",\n  \"preferredOccupation\": \"Software Developer\",\n  \"preferredLifestyle\": \"Active\",\n  \"preferredFood\": \"vegetarian\",\n  \"partnerMinAge\": 25,\n  \"partnerMaxAge\": 32,\n  \"preferredGenders\": [\"male\"],\n  \"hobbyIds\": [{{hobbyA}}, {{hobbyB}}],\n  \"quizAnswers\": [{ \"questionId\": \"weekend_style\", \"answer\": \"outdoors\" }]\n}"
+            },
+            "description": "Requires Bearer token. JSON body; every field optional:\npreferredLocation (<=150), preferredEducation (<=150), preferredOccupation (<=150), preferredLifestyle (<=100),\npreferredFood (vegetarian|non_vegetarian|eggetarian|vegan|jain|no_preference), partnerMinAge/partnerMaxAge (18-100, min <= max),\npreferredGenders (female|male|non_binary|other), hobbyIds (<=20 unique active ids), quizAnswers ([{ questionId, answer }]).\nAll parts are saved in one transaction. 409 if preferences already exist. Unknown keys (user_id, userId, role) -> 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Preferences saved successfully\"));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('saved', () => { pm.expect(d.isSet).to.eql(true); pm.expect(d.hobbies.length).to.eql(2); pm.expect(d.quizAnswers.length).to.eql(1); });",
+                  "pm.test('no scores or account data', () => pm.expect(JSON.stringify(pm.response.json())).to.not.match(/score|compatib|rank|password|email/i));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /preferences again → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences — update",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredOccupation\": \"Doctor\",\n  \"preferredLifestyle\": null\n}"
+            },
+            "description": "Requires Bearer token. Any subset of the POST fields; only provided fields change; null clears. Same single transaction."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Preferences updated successfully\"));",
+                  "pm.test('updated', () => pm.expect(pm.response.json().data).to.include({ preferredOccupation: 'Doctor', preferredLifestyle: null }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences — user_id in body → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredFood\": \"vegan\",\n  \"user_id\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences/hobbies — replace selection",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/hobbies",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hobbyIds\": [{{hobbyB}}, {{hobbyC}}]\n}"
+            },
+            "description": "Requires Bearer token. Body { hobbyIds: [...] }: the complete new selection (empty list clears). Ids must exist, be active and be unique."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Hobbies updated successfully\"));",
+                  "pm.test('two hobbies', () => pm.expect(pm.response.json().data.hobbies.length).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences/hobbies — unknown id → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/hobbies",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hobbyIds\": [\n    999999\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Validation failed\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences/hobbies — duplicates → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/hobbies",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hobbyIds\": [{{hobbyB}}, {{hobbyB}}]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /preferences/hobbies/:hobbyId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/hobbies/{{hobbyB}}",
+            "description": "Requires Bearer token. Removes one hobby from the selection. 404 if it is not selected."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Hobby removed\"));",
+                  "pm.test('one left', () => pm.expect(pm.response.json().data.hobbies.length).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /preferences/hobbies/:hobbyId — not selected → 404",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/hobbies/{{hobbyB}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"This hobby is not in your list\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /preferences/quiz",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/quiz",
+            "description": "Requires Bearer token. The configured questionnaire (status \"sample\" until approved) and the user's answers."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('questionnaire', () => pm.expect(pm.response.json().data.questionnaire.questions.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences/quiz — save answers",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/quiz",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"answers\": [\n    {\n      \"questionId\": \"core_values\",\n      \"answer\": [\n        \"family\",\n        \"health\"\n      ]\n    },\n    {\n      \"questionId\": \"ideal_partner\",\n      \"answer\": \"Kind and honest\"\n    }\n  ]\n}"
+            },
+            "description": "Requires Bearer token. Body { answers: [{ questionId, answer }] }, one entry per question.\nsingle_choice: an option value; multiple_choice: array of option values (<= maxSelections); text: up to maxLength; null removes the answer.\nAll answers are saved or none."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Quiz answers saved successfully\"));",
+                  "pm.test('three answers', () => pm.expect(pm.response.json().data.answers.length).to.eql(3));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /preferences/quiz — invalid option → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/preferences/quiz",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"answers\": [\n    {\n      \"questionId\": \"weekend_style\",\n      \"answer\": \"skydiving\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('field', () => pm.expect(pm.response.json().errors[0].field).to.eql('body.answers.0.answer'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /preferences without token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/preferences"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error body', () => pm.expect(pm.response.json()).to.include({ success: false, message: \"Authentication required\" }));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Login with OTP",
       "item": [
         {
           "name": "Send login OTP",
@@ -872,7 +1780,7 @@
       ]
     },
     {
-      "name": "7. Logout",
+      "name": "9. Logout",
       "item": [
         {
           "name": "Logout",

@@ -419,3 +419,295 @@ button.btn--link {
   background: var(--color-bg);
   border: 1px dashed var(--color-border);
 }
+
+/* Profile (Phase 5) */
+.stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.field select,
+.field textarea {
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 1rem;
+}
+
+.profile-form fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+}
+
+.profile-form legend {
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+
+.avatar--large {
+  width: 128px;
+  height: 128px;
+}
+
+.avatar--small {
+  width: 56px;
+  height: 56px;
+}
+
+.avatar--placeholder {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 1.5rem;
+}
+
+.avatar--small.avatar--placeholder {
+  font-size: 1rem;
+}
+
+.photo-uploader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.photo-uploader__preview {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+}
+
+.photo-uploader__preview .badge {
+  margin: 0;
+}
+
+.photo-uploader__body {
+  flex: 1;
+  min-width: 240px;
+}
+
+.camera--small {
+  display: block;
+  padding: 0.5rem;
+}
+
+.camera--small .camera__video {
+  max-height: 260px;
+  border-radius: 8px;
+}
+
+.camera--small .actions {
+  margin: 0.5rem 0 0;
+}
+
+button.btn--danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.profile-view__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.profile-view__header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.profile-view .details {
+  display: block;
+}
+
+.details__row {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.profile-view h2 {
+  font-size: 1.1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.bio {
+  white-space: pre-line;
+  margin: 0;
+}
+
+.completion {
+  margin-bottom: 1rem;
+}
+
+.completion__label {
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.completion__bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.completion__bar span {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+}
+
+.completion .muted {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+}
+
+.profile-summary {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.profile-summary h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.profile-summary .muted {
+  margin: 0;
+}
+
+.profile-summary .btn {
+  margin-left: auto;
+}
+
+.callout {
+  border-color: var(--color-primary);
+}
+
+.callout h2 {
+  margin-top: 0;
+}
+
+@media (max-width: 540px) {
+  .details__row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}
+
+/* Preferences (Phase 6) */
+.choice-group {
+  border: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.choice-group legend,
+.quiz__question legend {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.choice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.choice-list--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.choice input {
+  accent-color: var(--color-primary);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.35rem 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  font-size: 0.9rem;
+}
+
+.chip__remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--color-muted);
+  padding: 0 0.3rem;
+}
+
+.chip__remove:hover {
+  color: var(--color-danger);
+}
+
+.quiz__question {
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 0 1rem;
+  margin: 0 0 1rem;
+}
+
+.quiz .field textarea {
+  width: 100%;
+}
+
+.card > h2:first-child {
+  margin-top: 0;
+}

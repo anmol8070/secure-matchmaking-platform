@@ -82,6 +82,27 @@ const config = {
 
   // Prefix for 10-digit mobile numbers entered without a country code
   defaultCountryCode: process.env.DEFAULT_COUNTRY_CODE || '+91',
+
+  // Uploaded media (profile pictures)
+  media: {
+    // "local" = files on this server's disk, served under /media
+    storageProvider: (process.env.STORAGE_PROVIDER || 'local').toLowerCase(),
+    uploadsDir: path.resolve(__dirname, '../..', process.env.UPLOADS_DIR || 'uploads'),
+    // Origin used to build absolute image URLs, e.g. https://api.example.com
+    publicBaseUrl: (process.env.MEDIA_PUBLIC_BASE_URL || `http://localhost:${toInt(process.env.PORT, 5000)}`).replace(/\/+$/, ''),
+    publicBaseUrlConfigured: Boolean(process.env.MEDIA_PUBLIC_BASE_URL),
+  },
+
+  quiz: {
+    // JSON file with the compatibility questionnaire (see src/config/quiz-questions.json)
+    questionsFile: path.resolve(__dirname, '../..', process.env.QUIZ_QUESTIONS_FILE || 'src/config/quiz-questions.json'),
+  },
+
+  profileImage: {
+    maxSizeMb: Number(process.env.PROFILE_IMAGE_MAX_SIZE_MB) || 5,
+    // Stored images are resized to fit within this many pixels per side
+    maxDimension: toInt(process.env.PROFILE_IMAGE_MAX_DIMENSION, 1024),
+  },
 };
 
 const PLACEHOLDER_SECRET = /^(|replace_with.*|changeme|secret)$/i;
@@ -107,6 +128,9 @@ function validateEnvironment(cfg = config) {
     if (cfg.otp.provider === 'dev') {
       problems.push('OTP_PROVIDER=dev is for development only — configure a real OTP provider');
     }
+  }
+  if (cfg.isProduction && !(cfg.media.publicBaseUrlConfigured && cfg.media.publicBaseUrl.startsWith('https://'))) {
+    problems.push('MEDIA_PUBLIC_BASE_URL must be set to the public https:// origin that serves media in production');
   }
   if (cfg.otp.length < 4 || cfg.otp.length > 10) problems.push('OTP_LENGTH must be between 4 and 10');
   return problems;

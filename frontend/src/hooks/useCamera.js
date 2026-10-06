@@ -1,7 +1,9 @@
 /**
  * Live camera access via navigator.mediaDevices.getUserMedia().
  * Maps every failure to a clear, user-facing message, and always stops the
- * camera when the component unmounts.
+ * camera when the component unmounts. Used by login verification and by the
+ * profile picture uploader; pass { messages } to word errors for the context.
+ * This hook only handles the camera — it performs no face detection.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -36,7 +38,7 @@ function classify(error) {
   }
 }
 
-export default function useCamera() {
+export default function useCamera({ messages } = {}) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   // Incremented by every start()/stop(); a stream that arrives for an older
@@ -99,7 +101,7 @@ export default function useCamera() {
     videoRef,
     status,
     errorCode,
-    errorMessage: errorCode ? CAMERA_ERRORS[errorCode] : null,
+    errorMessage: errorCode ? messages?.[errorCode] || CAMERA_ERRORS[errorCode] : null,
     start,
     stop,
   };

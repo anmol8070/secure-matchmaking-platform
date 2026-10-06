@@ -30,6 +30,8 @@ export function onUnauthorized(handler) {
 
 export async function request(path, { method = 'GET', body, headers, auth = false, ...rest } = {}) {
   const token = auth ? tokenStore.get() : null;
+  // FormData (file uploads) is sent as multipart; the browser sets the boundary header.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
 
   let response;
   try {
@@ -37,11 +39,11 @@ export async function request(path, { method = 'GET', body, headers, auth = fals
       method,
       headers: {
         Accept: 'application/json',
-        ...(body !== undefined && { 'Content-Type': 'application/json' }),
+        ...(body !== undefined && !isForm && { 'Content-Type': 'application/json' }),
         ...(token && { Authorization: `Bearer ${token}` }),
         ...headers,
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: isForm ? body : body !== undefined ? JSON.stringify(body) : undefined,
       ...rest,
     });
   } catch (err) {

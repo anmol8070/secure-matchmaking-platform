@@ -84,6 +84,8 @@ erDiagram
         varchar food_preference
         varchar lifestyle_preference
         varchar preferred_location
+        varchar preferred_education
+        varchar preferred_occupation
         smallint partner_min_age
         smallint partner_max_age
         jsonb partner_preferences
@@ -245,6 +247,8 @@ Constraints:
 
 ### 4.2 profiles
 
+> Used unchanged by the Phase 5 profile API ([profile-management.md](profile-management.md)): `age` and `location` are computed from `date_of_birth` and `city`/`state`/`country`, and `profile_photo_url` holds a storage reference such as `/media/profile-photos/<uuid>.webp` (never image data).
+
 Public profile, 1:1 with `users`.
 
 | Column | Type | Null | Notes |
@@ -271,6 +275,8 @@ The user's own food and lifestyle choices, plus what they want in a partner. 1:1
 | food_preference | varchar(50) | yes | e.g. `vegetarian`, `vegan`, `non_vegetarian` |
 | lifestyle_preference | varchar(100) | yes | |
 | preferred_location | varchar(150) | yes | |
+| preferred_education | varchar(150) | yes | Added in Phase 6 (structured column for matching) |
+| preferred_occupation | varchar(150) | yes | Added in Phase 6 (structured column for matching) |
 | partner_min_age | smallint | yes | At least 18 |
 | partner_max_age | smallint | yes | At most 120 |
 | partner_preferences | json/jsonb | yes | Open structure, e.g. `{"genders":[...],"education":[...],"occupation":[...]}` |
@@ -595,6 +601,7 @@ Migration files, applied in order:
 | `20261004001400_create_otp_codes.js` | otp_codes (Phase 4) |
 | `20261004001500_add_session_fields_to_login_verifications.js` | `token_hash`, `expires_at`, `auth_method` + CHECK (Phase 4) |
 | `20261004001600_create_user_sessions.js` | user_sessions (Phase 4) |
+| `20261004001700_add_education_occupation_to_preferences.js` | `preferences.preferred_education`, `preferred_occupation` (Phase 6) |
 
 Rules for changing the schema:
 - **Never edit a migration that has already run in a shared environment.** Add a new migration instead.

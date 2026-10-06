@@ -615,7 +615,7 @@ describe('migrations', () => {
     }
 
     const [, applied] = await db.migrate.latest();
-    expect(applied).toHaveLength(17);
+    expect(applied).toHaveLength(18);
     for (const table of APP_TABLES) {
       expect(await db.schema.hasTable(table)).toBe(true);
     }
