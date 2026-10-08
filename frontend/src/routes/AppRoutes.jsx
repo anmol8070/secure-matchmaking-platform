@@ -23,9 +23,10 @@ import NotFound from '../pages/NotFound.jsx';
 import { AdminRoute, GuestRoute, ProtectedRoute, VerificationRoute } from './guards.jsx';
 import { ADMIN_PATHS, USER_PATHS } from './paths.js';
 
+import RecommendedMatches from '../pages/user/matches/RecommendedMatches.jsx';
+
 // Protected feature pages built in later phases.
 const UPCOMING_PAGES = [
-  [USER_PATHS.MATCHES, 'Matches'],
   [USER_PATHS.CONNECTIONS, 'Connections'],
   [USER_PATHS.MESSAGES, 'Messages'],
 ];
@@ -54,6 +55,7 @@ function AppRoutes() {
           <Route path={USER_PATHS.PROFILE_EDIT} element={<ProfileEdit />} />
           <Route path={USER_PATHS.PREFERENCES} element={<PreferencesPage />} />
           <Route path={USER_PATHS.PREFERENCES_QUIZ} element={<QuizPage />} />
+          <Route path={USER_PATHS.MATCHES} element={<RecommendedMatches />} />
           {UPCOMING_PAGES.map(([path, title]) => (
             <Route key={path} path={path} element={<PagePlaceholder title={title} />} />
           ))}

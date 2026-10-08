@@ -1,4 +1,14 @@
-/** quiz_answers — optional compatibility-question answers. */
 const BaseModel = require('./BaseModel');
 
-module.exports = new BaseModel({ table: 'quiz_answers', primaryKey: 'id' });
+class QuizAnswerModel extends BaseModel {
+  constructor() {
+    super({ table: 'quiz_answers', primaryKey: 'id' });
+  }
+
+  async getUserAnswers(userId, trx) {
+    return this.query(trx).where({ user_id: userId });
+  }
+}
+
+module.exports = new QuizAnswerModel();
+
