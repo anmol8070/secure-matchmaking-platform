@@ -15,4 +15,5 @@ module.exports = {
   LoginVerification: require('./loginVerificationModel'),
   OtpCode: require('./otpCodeModel'),
   UserSession: require('./userSessionModel'),
+  MlModel: require('./mlModel'),
 };

@@ -36,4 +36,7 @@ router.patch('/reports/:reportId', validate({ params: reportIdParams }), admin.r
 router.get('/activity', admin.listActivity);
 router.get('/monitoring', admin.getMonitoring);
 
+// ML Management
+router.post('/ml/train', admin.trainMlModel);
+
 module.exports = router;

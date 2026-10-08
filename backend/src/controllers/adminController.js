@@ -13,8 +13,26 @@ async function login(req, res) {
   sendSuccess(res, { message: 'Credentials verified. Live verification required.', data });
 }
 
+async function trainMlModel(req, res) {
+  // We trigger the training asynchronously so the request doesn't timeout,
+  // or we can await it if we expect it to be fast. Given this is a small 
+  // logistic regression, we can await it.
+  const { runTrainingPipeline } = require('../ml/scripts/train_model');
+  
+  try {
+    const result = await runTrainingPipeline();
+    sendSuccess(res, { message: 'ML model training completed', data: result });
+  } catch (error) {
+    if (error.message === 'Insufficient data for training.') {
+      return res.status(400).json({ success: false, message: 'Insufficient interaction data to train the model.' });
+    }
+    throw error;
+  }
+}
+
 module.exports = {
   login,
+  trainMlModel,
   ...placeholderController([
     'getDashboard',
     'listUsers',

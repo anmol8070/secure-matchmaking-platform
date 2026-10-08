@@ -62,9 +62,29 @@ function Dashboard() {
         </Link>
       </section>
 
-      <p className="badge">Matches, connections and messages arrive in later phases</p>
+      {/* Phase 8 — Recommended Matches */}
+      <section className="card profile-summary">
+        <div>
+          <h2>Recommended Matches</h2>
+          <p className="muted">
+            Discover compatible people ranked by your Phase&nbsp;7 compatibility score.
+          </p>
+        </div>
+        <Link to={USER_PATHS.MATCHES} className="btn btn--primary">
+          Find Matches
+        </Link>
+      </section>
+
+      <section className="card profile-summary">
+        <div>
+          <h2>Connections &amp; Messages</h2>
+          <p className="muted">Chat and video calling arrive in Phase 10.</p>
+        </div>
+        <span className="badge">Coming soon</span>
+      </section>
     </div>
   );
 }
 
 export default Dashboard;
+
