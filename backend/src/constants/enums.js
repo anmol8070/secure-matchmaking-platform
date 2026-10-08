@@ -15,7 +15,7 @@ module.exports = Object.freeze({
     'deleted',
   ]),
   HOBBY_STATUSES: Object.freeze(['active', 'inactive']),
-  CONNECTION_STATUSES: Object.freeze(['pending', 'accepted', 'rejected']),
+  CONNECTION_STATUSES: Object.freeze(['pending', 'accepted', 'rejected', 'cancelled', 'disconnected']),
   REPORT_STATUSES: Object.freeze(['pending', 'under_review', 'resolved', 'dismissed']),
   ACTIVITY_ACTIONS: Object.freeze([
     'profile_view',
@@ -24,6 +24,9 @@ module.exports = Object.freeze({
     'connection_accepted',
     'rejection',
     'feedback',
+    // Phase 10
+    'connection_cancelled',
+    'connection_removed',
   ]),
   VERIFICATION_STATUSES: Object.freeze(['pending', 'passed', 'failed', 'expired']),
 });

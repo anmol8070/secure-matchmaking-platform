@@ -201,6 +201,7 @@ describe('schema structure', () => {
   it('defines every foreign key with the documented delete rule', async () => {
     expect(await foreignKeys()).toEqual(
       [
+        'activity_feedback.connection_request_id -> connection_requests.request_id SET NULL',
         'activity_feedback.target_user_id -> users.user_id RESTRICT',
         'activity_feedback.user_id -> users.user_id RESTRICT',
         'blocks.blocked_id -> users.user_id RESTRICT',
@@ -453,6 +454,27 @@ describe('connection_requests', () => {
     await db('connection_requests').insert({ sender_id: a, receiver_id: b });
     await expectViolation(db('connection_requests').insert({ sender_id: a, receiver_id: b }), 'unique');
   });
+
+  it('allows one row per pair of users in either direction (Phase 10)', async () => {
+    const a = await createUser();
+    const b = await createUser();
+    await db('connection_requests').insert({ sender_id: a, receiver_id: b });
+    await expectViolation(db('connection_requests').insert({ sender_id: b, receiver_id: a }), 'unique');
+
+    // The generated pair columns follow a direction change of the existing row.
+    await db('connection_requests').where({ sender_id: a, receiver_id: b }).update({ sender_id: b, receiver_id: a });
+    const row = await db('connection_requests').where({ sender_id: b, receiver_id: a }).first();
+    expect([Number(row.pair_low_id), Number(row.pair_high_id)]).toEqual([Math.min(a, b), Math.max(a, b)]);
+  });
+
+  it('accepts the Phase 10 lifecycle states', async () => {
+    const a = await createUser();
+    const b = await createUser();
+    const id = await insertReturningId('connection_requests', { sender_id: a, receiver_id: b }, 'request_id');
+    for (const status of ['accepted', 'disconnected', 'pending', 'cancelled', 'rejected']) {
+      await db('connection_requests').where({ request_id: id }).update({ status });
+    }
+  });
 });
 
 describe('messages', () => {
@@ -615,7 +637,7 @@ describe('migrations', () => {
     }
 
     const [, applied] = await db.migrate.latest();
-    expect(applied).toHaveLength(18);
+    expect(applied).toHaveLength(20);
     for (const table of APP_TABLES) {
       expect(await db.schema.hasTable(table)).toBe(true);
     }

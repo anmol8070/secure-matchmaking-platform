@@ -5,7 +5,7 @@ class ActivityFeedbackModel extends BaseModel {
     super({ table: 'activity_feedback', primaryKey: 'id' });
   }
 
-  async logFeedback({ userId, targetUserId = null, action, reason = null }, trx) {
+  async logFeedback({ userId, targetUserId = null, action, reason = null, connectionRequestId = null }, trx) {
     const row = {
       user_id: userId,
       target_user_id: targetUserId,
@@ -13,6 +13,8 @@ class ActivityFeedbackModel extends BaseModel {
       reason,
       created_at: new Date(),
     };
+    // Only set when given, so callers that predate the column keep their exact inserts.
+    if (connectionRequestId) row.connection_request_id = connectionRequestId;
     return this.insertAndGetId(row, trx);
   }
 

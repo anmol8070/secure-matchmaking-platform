@@ -57,9 +57,14 @@ function translateDbError(err) {
   return null;
 }
 
+/** True when a UNIQUE constraint rejected the write (PostgreSQL 23505 / MySQL 1062). */
+function isUniqueViolation(err) {
+  return Boolean(err) && (err.code === '23505' || err.errno === 1062);
+}
+
 /** Minimal, non-sensitive description of a DB error for logs. */
 function describeDbError(err) {
   return { code: err.code, errno: err.errno, constraint: err.constraint, table: err.table };
 }
 
-module.exports = { translateDbError, describeDbError, isConnectionError };
+module.exports = { translateDbError, describeDbError, isConnectionError, isUniqueViolation };
