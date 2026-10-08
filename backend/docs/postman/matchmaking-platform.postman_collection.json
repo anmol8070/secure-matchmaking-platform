@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Matchmaking Platform API",
-    "description": "Phases 3-6: base API, authentication (registration, OTP, login, live presence verification, JWT, logout), profiles with profile pictures, and preferences, hobbies and quiz answers.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded. Phase 8 & 9: Match Ranking & Recommendations added.",
+    "description": "Phases 3-10: base API, authentication (registration, OTP, login, live presence verification, JWT, logout), profiles with profile pictures, and preferences, hobbies and quiz answers.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded. Phase 8 & 9: Match Ranking & Recommendations added.\n\nPhase 10 (folder 12): connection requests and connections. Set connectionReceiverId and receiverAccessToken first.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -43,6 +43,22 @@
     },
     {
       "key": "hobbyC",
+      "value": ""
+    },
+    {
+      "key": "connectionReceiverId",
+      "value": ""
+    },
+    {
+      "key": "receiverAccessToken",
+      "value": ""
+    },
+    {
+      "key": "connectionId",
+      "value": ""
+    },
+    {
+      "key": "currentUserId",
       "value": ""
     }
   ],
@@ -2271,6 +2287,635 @@
             "description": "Requires an admin token. Triggers the Logistic Regression pipeline to train a new model using historical interactions. If successful, saves a new ml_model_version."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "12. Connections (Phase 10)",
+      "description": "Connection requests and connection management. The sender/actor is ALWAYS the token owner; senderId/userId in a body is ignored.\nBefore running, set collection variables: connectionReceiverId (another active user WITH a profile) and receiverAccessToken (that user's access token, from a second login).\nLifecycle: pending -> accepted | rejected | cancelled; accepted -> disconnected. See backend/docs/phase-10-connections.md.",
+      "item": [
+        {
+          "name": "POST /connections - without token -> 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": 2\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /connections - malformed receiverId -> 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"abc\"\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /connections - send request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{connectionReceiverId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const c = pm.response.json().data.connection;",
+                  "pm.test('pending, outgoing', () => pm.expect(c).to.include({ status: 'pending', direction: 'outgoing' }));",
+                  "pm.collectionVariables.set('connectionId', c.id);",
+                  "pm.collectionVariables.set('currentUserId', c.senderId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /connections - to yourself -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{currentUserId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"You cannot send a connection request to yourself.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /connections - duplicate -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{connectionReceiverId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Connection request already pending.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /connections - reverse request (receiver) -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{receiverAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{currentUserId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('points to incoming request', () => pm.expect(pm.response.json().message).to.match(/already sent you a connection request/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /connections/status/:userId - pending_outgoing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections/status/{{connectionReceiverId}}",
+            "description": "Relationship state for the connection button: none | pending_outgoing | pending_incoming | connected | rejected | unavailable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('state', () => pm.expect(pm.response.json().data.state).to.eql('pending_outgoing'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /connections/requests/sent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections/requests/sent"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('array', () => pm.expect(pm.response.json().data.requests).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /connections/requests/received (receiver)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{receiverAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections/requests/received"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('contains request', () => pm.expect(pm.response.json().data.requests.map((r) => r.id)).to.include(Number(pm.collectionVariables.get('connectionId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /connections/:id accept - by sender -> 403",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"accept\"\n}"
+            },
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /connections/:id - unsupported action -> 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\"\n}"
+            },
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /connections/:id accept (receiver)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{receiverAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"accept\"\n}"
+            },
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('accepted', () => pm.expect(pm.response.json().data.connection.status).to.eql('accepted'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /connections - already connected -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{connectionReceiverId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Users are already connected.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /connections - my connections",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json().data.connections;",
+                  "pm.test('contains the connection', () => pm.expect(list.map((c) => c.connectionId)).to.include(Number(pm.collectionVariables.get('connectionId'))));",
+                  "pm.test('no private fields', () => pm.expect(JSON.stringify(list)).not.to.match(/email|mobile|password|date_of_birth/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /connections/:id - details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /connections/:id - unknown id -> 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections/999999999"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /connections/:id - remove connection",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('disconnected', () => pm.expect(pm.response.json().data.connection.status).to.eql('disconnected'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /connections/:id - again -> 409",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /connections - new request after removal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{connectionReceiverId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/connections"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /connections/:id cancel (sender)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"cancel\"\n}"
+            },
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('cancelled', () => pm.expect(pm.response.json().data.connection.status).to.eql('cancelled'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /connections/:id reject - not pending -> 409",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{receiverAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"reject\"\n}"
+            },
+            "url": "{{baseUrl}}/connections/{{connectionId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"This connection request is no longer pending.\"));"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

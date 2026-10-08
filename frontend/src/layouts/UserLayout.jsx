@@ -29,6 +29,12 @@ function UserLayout() {
               <NavLink to={USER_PATHS.MATCHES} className={navClass}>
                 Matches
               </NavLink>
+              <NavLink to={USER_PATHS.CONNECTIONS} end className={navClass}>
+                Connections
+              </NavLink>
+              <NavLink to={USER_PATHS.CONNECTION_REQUESTS} className={navClass}>
+                Requests
+              </NavLink>
               <NavLink to={USER_PATHS.MESSAGES} className={navClass}>
                 Messages
               </NavLink>

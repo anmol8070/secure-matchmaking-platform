@@ -344,12 +344,15 @@ Constraints:
 | request_id | bigint | no | auto | **PK** |
 | sender_id | bigint | no | | **FK** → users (RESTRICT) |
 | receiver_id | bigint | no | | **FK** → users (RESTRICT) |
-| status | varchar(20) | no | `pending` | `pending` \| `accepted` \| `rejected` |
+| status | varchar(20) | no | `pending` | `pending` \| `accepted` \| `rejected` \| `cancelled` \| `disconnected` (Phase 10) |
+| responded_at | timestamp | yes | | When the receiver accepted/rejected (Phase 10) |
+| pair_low_id / pair_high_id | bigint | — | generated | Stored generated `LEAST` / `GREATEST(sender_id, receiver_id)` (Phase 10) |
 | created_at / updated_at | timestamp | no | now | |
 
 Constraints:
 - `chk_connection_requests_not_self`: a user cannot send a request to themselves.
 - `UNIQUE (sender_id, receiver_id)`.
+- `UNIQUE (pair_low_id, pair_high_id)` (Phase 10): one row per pair of users in either direction. The row's status moves through the lifecycle described in [phase-10-connections.md](phase-10-connections.md).
 
 ### 4.9 messages
 
@@ -407,7 +410,8 @@ Append-only log of user interactions, used as input to adaptive recommendations.
 | id | bigint | no | **PK** |
 | user_id | bigint | no | **FK** → users (RESTRICT); the user who acted |
 | target_user_id | bigint | yes | **FK** → users (RESTRICT); NULL for general feedback |
-| action | varchar(40) | no | `profile_view` \| `interest` \| `connection_request` \| `connection_accepted` \| `rejection` \| `feedback` |
+| action | varchar(40) | no | `profile_view` \| `interest` \| `connection_request` \| `connection_accepted` \| `rejection` \| `feedback` \| `connection_cancelled` \| `connection_removed` (Phase 10) |
+| connection_request_id | bigint | yes | | **FK** → connection_requests (SET NULL), Phase 10 |
 | reason | text | yes | e.g. why a profile was rejected |
 | created_at | timestamp | no | |
 
@@ -538,6 +542,8 @@ Primary keys and unique constraints are indexed automatically. Additional indexe
 | matches | `idx_matches_user2` | user2_id | Reverse lookups; FK checks on user deletion |
 | connection_requests | `uq_connection_requests_pair` (unique) | sender_id, receiver_id | Requests a user sent |
 | connection_requests | `idx_connection_requests_receiver_status` | receiver_id, status | Incoming pending requests |
+| connection_requests | `uq_connection_requests_user_pair` (unique) | pair_low_id, pair_high_id | One relationship per pair (Phase 10) |
+| connection_requests | `idx_connection_requests_sender_status` | sender_id, status | Sent requests, connection lists (Phase 10) |
 | messages | `idx_messages_conversation` | sender_id, receiver_id, sent_at | Conversation history for A↔B (both directions), messages a user sent |
 | messages | `idx_messages_receiver` | receiver_id, sent_at | Inbox and unread messages |
 | reports | `idx_reports_reporter` | reporter_id | Reports filed by a user |

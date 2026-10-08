@@ -197,11 +197,12 @@ All endpoints are versioned under `/api/v1`. Responses use one envelope:
 | `/api/v1/matches` | **Implemented (Phase 8)** — `GET /matches` ranked recommendations (pagination + filters), `GET /matches/:userId` full compatibility details (Bearer token) |
 | `/api/v1/feedback` | **Implemented (Phase 7/8)** — record interaction events (`profile_view`, `interest`, `connection_request`, `connection_accepted`, `rejection`, `feedback`); list own activity |
 | `/api/v1/recommendations` | Alias for `/matches` — same pipeline (Bearer token) |
-| `/connections`, `/messages`, `/reports`, `/blocks` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
+| `/api/v1/connections` | **Implemented (Phase 10)** — send, accept, reject, cancel requests; list received/sent requests and connections; relationship status; remove connections (Bearer token) |
+| `/messages`, `/reports`, `/blocks` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
 | `/admin/*` | Require an **admin** token; `501` placeholders |
 | Anything else | `404 API endpoint not found` |
 
-The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**; profiles and profile pictures in **[backend/docs/profile-management.md](backend/docs/profile-management.md)**; preferences, hobbies and quiz in **[backend/docs/preferences.md](backend/docs/preferences.md)**; Phase 8 match ranking and recommendations in **[backend/docs/phase-8-matches.md](backend/docs/phase-8-matches.md)**.
+The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**; profiles and profile pictures in **[backend/docs/profile-management.md](backend/docs/profile-management.md)**; preferences, hobbies and quiz in **[backend/docs/preferences.md](backend/docs/preferences.md)**; Phase 8 match ranking and recommendations in **[backend/docs/phase-8-matches.md](backend/docs/phase-8-matches.md)**; Phase 10 connection requests and connections in **[backend/docs/phase-10-connections.md](backend/docs/phase-10-connections.md)**.
 
 ### Trying the login flow locally
 
@@ -280,7 +281,7 @@ project/
 
 ## 13. Current development phase
 
-**Phase 8: Match Ranking & Recommended Profiles (complete)**
+**Phase 10: Connection Requests & Connection Management (complete)**
 
 | Phase | Scope                                           | Status      |
 | ----- | ----------------------------------------------- | ----------- |
@@ -293,5 +294,6 @@ project/
 | 7     | Compatibility Engine, Interaction Tracking, Logistic Regression ML Engine & Adaptive Ranking | ✅ Complete |
 | 8     | Match Ranking & Recommended Profiles (deterministic pipeline, GET /matches, Phase 9 ML preparation) | ✅ Complete |
 | 9     | ML-based Adaptive Recommendation System (Logistic Regression, evaluation, inference) | ✅ Complete |
-| 10+   | Messaging/Chat, WebRTC Video, Admin moderation & Notifications | Planned |
+| 10    | Connection requests & connection management (lifecycle, blocking, interaction logging, chat precondition) | ✅ Complete |
+| 11+   | Messaging/Chat, WebRTC Video, Admin moderation & Notifications | Planned |
 

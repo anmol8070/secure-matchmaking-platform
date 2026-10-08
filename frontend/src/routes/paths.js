@@ -13,6 +13,7 @@ export const USER_PATHS = {
   PREFERENCES_QUIZ: '/preferences/quiz',
   MATCHES: '/matches',
   CONNECTIONS: '/connections',
+  CONNECTION_REQUESTS: '/connections/requests',
   MESSAGES: '/messages',
 };
 

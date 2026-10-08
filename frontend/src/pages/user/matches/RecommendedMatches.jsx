@@ -9,14 +9,17 @@
  *  - Ranked match cards with profile picture, compatibility %, common hobbies, explanation
  *  - "Why This Match?" section backed by real compatibility data
  *  - Match Details modal with score breakdown bars
- *  - Connection request placeholder (Phase 10)
+ *  - Connection request button backed by the real relationship state (Phase 10)
+ *  - ?view=<userId> opens that user's match details (used by the Connections pages)
  *  - Pagination controls
  *  - Optional client-side filters (location, age, education, lifestyle)
  *  - Loading / empty / error states
  *  - Profile view interaction logged for Phase 9 ML
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { matchService } from '../../../services/matchService.js';
+import ConnectionButton from '../../../components/connections/ConnectionButton.jsx';
 
 // ─── Tiny utility ────────────────────────────────────────────────────────────
 
@@ -141,10 +144,9 @@ function HobbyPill({ hobby }) {
 
 // ─── MatchCard ────────────────────────────────────────────────────────────────
 
-function MatchCard({ item, onViewDetails, onConnect, connectionSent, detailsLoading }) {
+function MatchCard({ item, onViewDetails, detailsLoading }) {
   const { userId, profile, compatibilityScore, commonHobbies, whyThisMatch } = item;
   const [hovered, setHovered] = useState(false);
-  const isSent = connectionSent[userId];
 
   return (
     <div
@@ -363,25 +365,9 @@ function MatchCard({ item, onViewDetails, onConnect, connectionSent, detailsLoad
           View Match
         </button>
 
-        <button
-          id={`connect-${userId}`}
-          onClick={() => onConnect(userId)}
-          disabled={isSent}
-          style={{
-            flex: 1,
-            padding: '9px 12px',
-            borderRadius: 10,
-            border: 'none',
-            backgroundColor: isSent ? '#d1fae5' : '#4f46e5',
-            color: isSent ? '#065f46' : '#ffffff',
-            fontSize: 13,
-            fontWeight: 700,
-            cursor: isSent ? 'default' : 'pointer',
-            transition: 'background 0.15s, transform 0.1s',
-          }}
-        >
-          {isSent ? '✓ Request Sent' : 'Connect'}
-        </button>
+        <div id={`connect-${userId}`} style={{ flex: 1 }}>
+          <ConnectionButton userId={userId} />
+        </div>
       </div>
     </div>
   );
@@ -615,6 +601,11 @@ function MatchDetailsModal({ match, onClose }) {
             </div>
           )}
 
+          {/* Connection (Phase 10) */}
+          <div style={{ marginBottom: 20 }}>
+            <ConnectionButton userId={match.userId} />
+          </div>
+
           {/* Why this match */}
           {match.whyThisMatch && match.whyThisMatch.length > 0 && (
             <div style={{ marginBottom: 20 }}>
@@ -787,8 +778,8 @@ export default function RecommendedMatches() {
 
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
-  const [connectionSent, setConnectionSent] = useState({});
-  const [connectionError, setConnectionError] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewUserId = searchParams.get('view');
 
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -852,18 +843,16 @@ export default function RecommendedMatches() {
     }
   };
 
-  const handleConnect = async (candidateId) => {
-    setConnectionError(null);
-    try {
-      await matchService.sendConnectionRequest(candidateId);
-      setConnectionSent((prev) => ({ ...prev, [candidateId]: true }));
-    } catch (err) {
-      setConnectionError(err.message || 'Failed to send connection request. Please try again.');
-      setTimeout(() => setConnectionError(null), 5000);
-    }
-  };
 
-  const handleCloseModal = useCallback(() => setSelectedMatch(null), []);
+  // Open the details of a specific user when linked with ?view=<userId>.
+  useEffect(() => {
+    if (viewUserId) handleViewDetails(viewUserId);
+  }, [viewUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCloseModal = useCallback(() => {
+    setSelectedMatch(null);
+    if (searchParams.has('view')) setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const hasActiveFilters = Object.values(appliedFilters).some(Boolean);
 
@@ -937,13 +926,6 @@ export default function RecommendedMatches() {
               Apply Filters
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Connection error toast */}
-      {connectionError && (
-        <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 16px', marginBottom: 16, color: '#991b1b', fontSize: 14, fontWeight: 500 }}>
-          {connectionError}
         </div>
       )}
 
@@ -1038,8 +1020,6 @@ export default function RecommendedMatches() {
                 key={item.userId}
                 item={item}
                 onViewDetails={handleViewDetails}
-                onConnect={handleConnect}
-                connectionSent={connectionSent}
                 detailsLoading={detailsLoading}
               />
             ))}

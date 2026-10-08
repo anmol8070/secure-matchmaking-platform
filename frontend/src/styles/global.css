@@ -711,3 +711,76 @@ button.btn--danger {
 .card > h2:first-child {
   margin-top: 0;
 }
+
+/* ---------- Connections (Phase 10) ---------- */
+
+.connection-button {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.connection-button__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.connection-button__note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.connection-button__note--error {
+  color: var(--color-danger);
+}
+
+.person-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.person-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.person-card__body {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.person-card__body h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.person-card__body p {
+  margin: 0;
+}
+
+.person-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  text-transform: capitalize;
+}

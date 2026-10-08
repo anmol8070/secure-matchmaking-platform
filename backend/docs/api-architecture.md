@@ -102,7 +102,7 @@ A breaking change will add `/api/v2` as a new router mounted beside v1, so exist
 | `/hobbies` | ✅ `GET /` — active hobby catalogue (Phase 6; selection lives under `/preferences/hobbies`) |
 | `/matches` | `GET /`, `GET /:userId` |
 | `/recommendations` | `GET /` |
-| `/connections` | `GET /`, `GET /requests`, `POST /requests`, `PATCH /requests/:requestId` |
+| `/connections` | `GET /`, `POST /`, `GET /requests/received`, `GET /requests/sent`, `GET /status/:userId`, `GET /:id`, `PUT /:id`, `DELETE /:id` — implemented in Phase 10 ([phase-10-connections.md](phase-10-connections.md)) |
 | `/messages` | `GET /conversations`, `GET /:userId`, `POST /:userId`, `PATCH /:userId/read` |
 | `/reports` | `POST /`, `GET /` |
 | `/blocks` | `GET /`, `POST /`, `DELETE /:userId` |

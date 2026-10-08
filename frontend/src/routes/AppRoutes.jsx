@@ -24,12 +24,11 @@ import { AdminRoute, GuestRoute, ProtectedRoute, VerificationRoute } from './gua
 import { ADMIN_PATHS, USER_PATHS } from './paths.js';
 
 import RecommendedMatches from '../pages/user/matches/RecommendedMatches.jsx';
+import Connections from '../pages/connections/Connections.jsx';
+import ConnectionRequests from '../pages/connections/ConnectionRequests.jsx';
 
 // Protected feature pages built in later phases.
-const UPCOMING_PAGES = [
-  [USER_PATHS.CONNECTIONS, 'Connections'],
-  [USER_PATHS.MESSAGES, 'Messages'],
-];
+const UPCOMING_PAGES = [[USER_PATHS.MESSAGES, 'Messages']];
 
 function AppRoutes() {
   return (
@@ -56,6 +55,8 @@ function AppRoutes() {
           <Route path={USER_PATHS.PREFERENCES} element={<PreferencesPage />} />
           <Route path={USER_PATHS.PREFERENCES_QUIZ} element={<QuizPage />} />
           <Route path={USER_PATHS.MATCHES} element={<RecommendedMatches />} />
+          <Route path={USER_PATHS.CONNECTIONS} element={<Connections />} />
+          <Route path={USER_PATHS.CONNECTION_REQUESTS} element={<ConnectionRequests />} />
           {UPCOMING_PAGES.map(([path, title]) => (
             <Route key={path} path={path} element={<PagePlaceholder title={title} />} />
           ))}
