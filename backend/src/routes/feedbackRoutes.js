@@ -1,5 +1,9 @@
 /**
  * /api/v1/feedback — activity and interaction feedback for adaptive recommendation.
+ *
+ * Accepted action values match the DB `chk_activity_feedback_action` constraint
+ * plus legacy aliases (like → interest, accepted → connection_accepted, etc.).
+ * The service layer translates aliases to canonical DB values before inserting.
  */
 const { Router } = require('express');
 const feedback = require('../controllers/feedbackController');
@@ -9,7 +13,18 @@ const router = Router();
 
 const recordFeedbackBody = z.object({
   targetUserId: id().optional().nullable(),
-  action: z.enum(['profile_view', 'like', 'connection_request', 'accepted', 'rejected', 'feedback']),
+  // DB canonical values + API aliases (service maps aliases → DB values)
+  action: z.enum([
+    'profile_view',
+    'interest',
+    'like',              // alias → interest
+    'connection_request',
+    'connection_accepted',
+    'accepted',          // alias → connection_accepted
+    'rejection',
+    'rejected',          // alias → rejection
+    'feedback',
+  ]),
   reason: z.string().trim().max(500).optional().nullable(),
 });
 

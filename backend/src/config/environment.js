@@ -103,6 +103,13 @@ const config = {
     // Stored images are resized to fit within this many pixels per side
     maxDimension: toInt(process.env.PROFILE_IMAGE_MAX_DIMENSION, 1024),
   },
+
+  recommendation: {
+    // Number of candidates returned per page when no limit is specified
+    defaultLimit: toInt(process.env.RECOMMENDATION_DEFAULT_LIMIT, 20),
+    // Hard ceiling on the limit query parameter — prevents excessively large requests
+    maxLimit: toInt(process.env.RECOMMENDATION_MAX_LIMIT, 100),
+  },
 };
 
 const PLACEHOLDER_SECRET = /^(|replace_with.*|changeme|secret)$/i;

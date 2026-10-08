@@ -37,7 +37,14 @@ describe('matchingService Unit Tests', () => {
       partner_max_age: 35,
     });
 
-    UserHobby.getUserHobbyIds.mockResolvedValue([1, 2, 3, 4]);
+    // Service calls getUserHobbiesWithNames (returns { hobby_id, hobby_name }[]),
+    // not getUserHobbyIds (returns number[]). Mock the correct method.
+    UserHobby.getUserHobbiesWithNames.mockResolvedValue([
+      { hobby_id: 1, hobby_name: 'Hiking' },
+      { hobby_id: 2, hobby_name: 'Music' },
+      { hobby_id: 3, hobby_name: 'Gaming' },
+      { hobby_id: 4, hobby_name: 'Travel' },
+    ]);
     QuizAnswer.getUserAnswers.mockResolvedValue([
       { question_id: 'q1', answer: 'a' },
       { question_id: 'q2', answer: 'b' },

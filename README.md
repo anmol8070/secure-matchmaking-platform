@@ -194,11 +194,14 @@ All endpoints are versioned under `/api/v1`. Responses use one envelope:
 | `/api/v1/admin/login` | Implemented (admins only, followed by live verification) |
 | `/api/v1/profile` | **Implemented (Phase 5)** — create, view, edit own profile; upload/replace/remove profile picture (Bearer token) |
 | `/api/v1/preferences`, `/api/v1/hobbies` | **Implemented (Phase 6)** — matching preferences, hobby catalogue and selection, compatibility quiz answers (Bearer token) |
-| `/matches`, `/recommendations`, `/connections`, `/messages`, `/reports`, `/blocks`, `/feedback` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
+| `/api/v1/matches` | **Implemented (Phase 8)** — `GET /matches` ranked recommendations (pagination + filters), `GET /matches/:userId` full compatibility details (Bearer token) |
+| `/api/v1/feedback` | **Implemented (Phase 7/8)** — record interaction events (`profile_view`, `interest`, `connection_request`, `connection_accepted`, `rejection`, `feedback`); list own activity |
+| `/api/v1/recommendations` | Alias for `/matches` — same pipeline (Bearer token) |
+| `/connections`, `/messages`, `/reports`, `/blocks` | Require a Bearer token; endpoints return `501 This module will be implemented in a later development phase` |
 | `/admin/*` | Require an **admin** token; `501` placeholders |
 | Anything else | `404 API endpoint not found` |
 
-The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**; profiles and profile pictures in **[backend/docs/profile-management.md](backend/docs/profile-management.md)**; preferences, hobbies and quiz in **[backend/docs/preferences.md](backend/docs/preferences.md)**.
+The endpoint list, error codes and middleware are documented in [backend/docs/api-architecture.md](backend/docs/api-architecture.md). Registration, OTP, login, live verification and sessions are described in **[backend/docs/authentication-flow.md](backend/docs/authentication-flow.md)**; profiles and profile pictures in **[backend/docs/profile-management.md](backend/docs/profile-management.md)**; preferences, hobbies and quiz in **[backend/docs/preferences.md](backend/docs/preferences.md)**; Phase 8 match ranking and recommendations in **[backend/docs/phase-8-matches.md](backend/docs/phase-8-matches.md)**.
 
 ### Trying the login flow locally
 
@@ -277,7 +280,7 @@ project/
 
 ## 13. Current development phase
 
-**Phase 7: Compatibility Engine & Adaptive ML Recommendation Pipeline (complete)**
+**Phase 8: Match Ranking & Recommended Profiles (complete)**
 
 | Phase | Scope                                           | Status      |
 | ----- | ----------------------------------------------- | ----------- |
@@ -287,6 +290,8 @@ project/
 | 4     | Registration, OTP, login, live verification & authorization | ✅ Complete |
 | 5     | Profile creation, edit, view & profile picture  | ✅ Complete |
 | 6     | Preferences, hobbies & quiz answers             | ✅ Complete |
-| 7     | Phase 7: Compatibility Engine, Interaction Tracking, Logistic Regression ML Engine & Adaptive Ranking | ✅ Complete |
-| 8+    | Messaging/Chat, WebRTC Video, Admin moderation & Notifications | Planned |
+| 7     | Compatibility Engine, Interaction Tracking, Logistic Regression ML Engine & Adaptive Ranking | ✅ Complete |
+| 8     | Match Ranking & Recommended Profiles (deterministic pipeline, GET /matches, Phase 9 ML preparation) | ✅ Complete |
+| 9     | ML-based Adaptive Recommendation System (Logistic Regression, evaluation, inference) | ✅ Complete |
+| 10+   | Messaging/Chat, WebRTC Video, Admin moderation & Notifications | Planned |
 

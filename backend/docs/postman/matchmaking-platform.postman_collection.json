@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Matchmaking Platform API",
-    "description": "Phases 3-6: base API, authentication (registration, OTP, login, live presence verification, JWT, logout), profiles with profile pictures, and preferences, hobbies and quiz answers.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded.",
+    "description": "Phases 3-6: base API, authentication (registration, OTP, login, live presence verification, JWT, logout), profiles with profile pictures, and preferences, hobbies and quiz answers.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded. Phase 8 & 9: Match Ranking & Recommendations added.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -1852,6 +1852,425 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "10. Matches & Recommendations (Phase 8)",
+      "item": [
+        {
+          "name": "GET ranked recommendations (page 1, limit 12)",
+          "id": "p8-get-matches-1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches?page=1&limit=12",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "12"
+                }
+              ]
+            },
+            "description": "Returns paginated candidates sorted by Phase 7 compatibility score DESC. Requires valid Bearer token."
+          },
+          "response": []
+        },
+        {
+          "name": "GET matches with filters (location + lifestyle)",
+          "id": "p8-get-matches-filtered",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches?page=1&limit=10&location=London&lifestyle=Active",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "location",
+                  "value": "London"
+                },
+                {
+                  "key": "lifestyle",
+                  "value": "Active"
+                }
+              ]
+            },
+            "description": "Filters narrow the candidate pool before ranking but do not alter the compatibility formula."
+          },
+          "response": []
+        },
+        {
+          "name": "GET matches with age filter",
+          "id": "p8-get-matches-age",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches?page=1&limit=20&minAge=25&maxAge=35",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "minAge",
+                  "value": "25"
+                },
+                {
+                  "key": "maxAge",
+                  "value": "35"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET matches — page 2",
+          "id": "p8-get-matches-p2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches?page=2&limit=12",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "2"
+                },
+                {
+                  "key": "limit",
+                  "value": "12"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET matches — invalid limit (422)",
+          "id": "p8-get-matches-bad-limit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches?limit=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "limit=0 violates min(1) → 422 Validation failed"
+          },
+          "response": []
+        },
+        {
+          "name": "GET matches — unauthenticated (401)",
+          "id": "p8-get-matches-unauth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/matches",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches"
+              ]
+            },
+            "description": "No Authorization header → 401 Authentication required"
+          },
+          "response": []
+        },
+        {
+          "name": "GET match details for candidate :userId",
+          "id": "p8-get-match-detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches/{{candidate_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches",
+                "{{candidate_user_id}}"
+              ],
+              "variable": [
+                {
+                  "key": "candidate_user_id",
+                  "value": "2",
+                  "description": "ID of the candidate"
+                }
+              ]
+            },
+            "description": "Returns full compatibility breakdown + whyThisMatch. Also logs profile_view interaction event for Phase 9 ML."
+          },
+          "response": []
+        },
+        {
+          "name": "GET match details — self (400)",
+          "id": "p8-get-match-self",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches/{{own_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches",
+                "{{own_user_id}}"
+              ],
+              "variable": [
+                {
+                  "key": "own_user_id",
+                  "value": "1",
+                  "description": "Your own user ID"
+                }
+              ]
+            },
+            "description": "Cannot request match details with yourself → 400"
+          },
+          "response": []
+        },
+        {
+          "name": "GET match details — blocked user (403)",
+          "id": "p8-get-match-blocked",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches/{{blocked_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches",
+                "{{blocked_user_id}}"
+              ],
+              "variable": [
+                {
+                  "key": "blocked_user_id",
+                  "value": "99",
+                  "description": "ID of a blocked user"
+                }
+              ]
+            },
+            "description": "Either direction block → 403 This profile is not accessible"
+          },
+          "response": []
+        },
+        {
+          "name": "GET match details — inactive / not found (404)",
+          "id": "p8-get-match-notfound",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/matches/999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "matches",
+                "999999"
+              ]
+            },
+            "description": "Non-existent or inactive account → 404 Profile not found or account is inactive"
+          },
+          "response": []
+        },
+        {
+          "name": "POST record profile_view interaction (Phase 9 ML)",
+          "id": "p8-post-feedback-view",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetUserId\": 2,\n  \"action\": \"profile_view\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "feedback"
+              ]
+            },
+            "description": "Logs interaction event. Action values: profile_view | interest | like | connection_request | connection_accepted | accepted | rejection | rejected | feedback"
+          },
+          "response": []
+        },
+        {
+          "name": "POST record interest / like interaction (Phase 9 ML)",
+          "id": "p8-post-feedback-interest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetUserId\": 2,\n  \"action\": \"interest\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "feedback"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "11. Machine Learning & Admin (Phase 9)",
+      "item": [
+        {
+          "name": "POST Trigger ML Model Training",
+          "id": "p9-admin-ml-train",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/ml/train",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "ml",
+                "train"
+              ]
+            },
+            "description": "Requires an admin token. Triggers the Logistic Regression pipeline to train a new model using historical interactions. If successful, saves a new ml_model_version."
+          },
+          "response": []
         }
       ]
     }
