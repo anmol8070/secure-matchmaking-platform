@@ -27,6 +27,43 @@ function parseTrustProxy(value) {
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 
+/** Public Render origin. Used for media URLs when production has no public MEDIA_PUBLIC_BASE_URL. */
+const PRODUCTION_API_ORIGIN = 'https://secure-matchmaking-platform.onrender.com';
+
+/** True for localhost, loopback, .local, and private IPv4 literals. */
+function isPrivateDevUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return true;
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host === '::1' ||
+      host.endsWith('.local')
+    ) {
+      return true;
+    }
+    return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Origin written into absolute media URLs.
+ * Development keeps the local server. Production never falls back to a private host.
+ */
+function resolveMediaPublicBaseUrl() {
+  const configured = String(process.env.MEDIA_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (nodeEnv === 'production') {
+    if (configured && !isPrivateDevUrl(configured)) return configured;
+    return PRODUCTION_API_ORIGIN;
+  }
+  return configured || `http://localhost:${toInt(process.env.PORT, 5000)}`;
+}
+
 const config = {
   nodeEnv,
   isProduction: nodeEnv === 'production',
@@ -96,7 +133,7 @@ const config = {
     storageProvider: (process.env.STORAGE_PROVIDER || 'local').toLowerCase(),
     uploadsDir: path.resolve(__dirname, '../..', process.env.UPLOADS_DIR || 'uploads'),
     // Origin used to build absolute image URLs, e.g. https://api.example.com
-    publicBaseUrl: (process.env.MEDIA_PUBLIC_BASE_URL || `http://localhost:${toInt(process.env.PORT, 5000)}`).replace(/\/+$/, ''),
+    publicBaseUrl: resolveMediaPublicBaseUrl(),
     publicBaseUrlConfigured: Boolean(process.env.MEDIA_PUBLIC_BASE_URL),
   },
 

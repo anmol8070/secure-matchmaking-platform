@@ -208,6 +208,28 @@ describe('CORS', () => {
     expect(res.headers['access-control-allow-headers']).toContain('Authorization');
   });
 
+  it('allows the deployed Vercel frontend and answers its preflight', async () => {
+    const origin = 'https://secure-matchmaking-platform.vercel.app';
+    const res = await request(app).get('/api/v1/health').set('Origin', origin);
+    expect(res.status).toBe(200);
+    expect(res.headers['access-control-allow-origin']).toBe(origin);
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+    expect(res.headers['access-control-allow-origin']).not.toBe('*');
+
+    const preflight = await request(app)
+      .options('/api/v1/auth/login')
+      .set('Origin', origin)
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'Content-Type, Authorization');
+
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe(origin);
+    expect(preflight.headers['access-control-allow-methods']).toContain('POST');
+    expect(preflight.headers['access-control-allow-methods']).toContain('OPTIONS');
+    expect(preflight.headers['access-control-allow-headers']).toContain('Authorization');
+    expect(preflight.headers['access-control-allow-credentials']).toBe('true');
+  });
+
   it('rejects other origins with 403 before reaching routes', async () => {
     const res = await request(app).post('/api/v1/auth/register').set('Origin', 'http://evil.example.com');
 
