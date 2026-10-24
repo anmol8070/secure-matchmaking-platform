@@ -3,8 +3,34 @@ import { Navigate, useLocation } from 'react-router-dom';
 import Alert from '../../../components/common/Alert.jsx';
 import ProfileView from '../../../components/profile/ProfileView.jsx';
 import ProfilePhotoUploader from '../../../components/profile/ProfilePhotoUploader.jsx';
+import useDialog from '../../../hooks/useDialog.js';
 import useOwnProfile from '../../../hooks/useOwnProfile.js';
 import { USER_PATHS } from '../../../routes/paths.js';
+
+function ChangePhotoDialog({ profile, onClose, onChange }) {
+  const dialogRef = useDialog(onClose);
+
+  return (
+    <div className="dialog-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <div ref={dialogRef} className="dialog card dialog--wide" role="dialog" aria-modal="true" aria-labelledby="change-photo-title" tabIndex={-1}>
+        <h2 id="change-photo-title">Change photo</h2>
+        <ProfilePhotoUploader
+          photoUrl={profile.profilePhotoUrl}
+          name={profile.name}
+          onChange={(next) => {
+            onChange(next);
+            onClose();
+          }}
+        />
+        <div className="actions">
+          <button type="button" className="btn" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** /profile — the signed-in user's profile. Sends new users to "Complete profile". */
 function ProfilePage() {
@@ -18,14 +44,11 @@ function ProfilePage() {
 
   return (
     <div className="stack">
-      <Alert>{state?.message}</Alert>
+      {state?.message && <Alert type="success">{state.message}</Alert>}
       {state?.warning && <Alert type="error">{state.warning}</Alert>}
-      <ProfileView profile={profile} onChangePhoto={() => setEditingPhoto((open) => !open)} />
+      <ProfileView profile={profile} onChangePhoto={() => setEditingPhoto(true)} />
       {editingPhoto && (
-        <section className="card">
-          <h2>Profile picture</h2>
-          <ProfilePhotoUploader photoUrl={profile.profilePhotoUrl} name={profile.name} onChange={setProfile} />
-        </section>
+        <ChangePhotoDialog profile={profile} onClose={() => setEditingPhoto(false)} onChange={setProfile} />
       )}
     </div>
   );

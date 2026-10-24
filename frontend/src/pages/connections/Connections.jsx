@@ -1,21 +1,23 @@
 /**
  * My connections (Phase 10): accepted connections only, loaded from the backend.
- * "Chat" leads to the Messages area that Phase 11 implements; only accepted
- * connections are offered it, and the backend enforces the same rule.
+ * "Chat" opens the private chat (Phase 11); only accepted connections are
+ * offered it, and the backend enforces the same rule.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Alert from '../../components/common/Alert.jsx';
+import { useToast } from '../../components/common/Toast.jsx';
 import Avatar from '../../components/profile/Avatar.jsx';
+import SafetyActions from '../../components/safety/SafetyActions.jsx';
 import { connectionService } from '../../services/connectionService.js';
-import { USER_PATHS } from '../../routes/paths.js';
+import { USER_PATHS, chatPath, videoCallPath } from '../../routes/paths.js';
 import { formatDate } from './ConnectionRequests.jsx';
 
 function Connections() {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
+  const notify = useToast();
   const [busyId, setBusyId] = useState(null);
   const inFlight = useRef(false);
 
@@ -40,11 +42,10 @@ function Connections() {
     if (!window.confirm(`Remove ${connection.user.name} from your connections?`)) return;
     inFlight.current = true;
     setBusyId(connection.connectionId);
-    setNotice(null);
     setError(null);
     try {
       await connectionService.removeConnection(connection.connectionId);
-      setNotice('Connection removed.');
+      notify('Connection removed.');
     } catch (err) {
       setError(err.message || 'Unable to process request.');
     } finally {
@@ -62,7 +63,6 @@ function Connections() {
         <Link to={USER_PATHS.CONNECTION_REQUESTS}>connection requests</Link> page.
       </p>
 
-      <Alert type="success">{notice}</Alert>
       <Alert type="error">{error}</Alert>
 
       {loading ? (
@@ -92,8 +92,11 @@ function Connections() {
                   <Link className="btn btn--small" to={`${USER_PATHS.MATCHES}?view=${user.userId}`}>
                     View Profile
                   </Link>
-                  <Link className="btn btn--primary btn--small" to={`${USER_PATHS.MESSAGES}?with=${user.userId}`}>
+                  <Link className="btn btn--primary btn--small" to={chatPath(user.userId)}>
                     Chat
+                  </Link>
+                  <Link className="btn btn--small" to={videoCallPath(user.userId)}>
+                    Video call
                   </Link>
                   <button
                     type="button"
@@ -103,6 +106,10 @@ function Connections() {
                   >
                     Remove
                   </button>
+                  <SafetyActions
+                    user={user}
+                    onBlocked={() => setConnections((list) => list.filter((c) => c.connectionId !== connection.connectionId))}
+                  />
                 </div>
               </li>
             );

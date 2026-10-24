@@ -12,6 +12,13 @@ const toInt = (value, fallback) => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+/** Comma-separated list → trimmed, non-empty values. */
+const splitList = (value) =>
+  String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 /** Express "trust proxy": a hop count ("1"), a subnet/list ("loopback"), or off. */
 function parseTrustProxy(value) {
   if (!value) return false;
@@ -110,6 +117,95 @@ const config = {
     // Hard ceiling on the limit query parameter — prevents excessively large requests
     maxLimit: toInt(process.env.RECOMMENDATION_MAX_LIMIT, 100),
   },
+
+  // Private chat (Phase 11)
+  messages: {
+    // Messages per history page when no limit is given, and the largest allowed limit
+    defaultLimit: toInt(process.env.MESSAGE_DEFAULT_LIMIT, 50),
+    maxLimit: toInt(process.env.MESSAGE_MAX_LIMIT, 100),
+    // Longest accepted message, in characters (after trimming)
+    maxLength: toInt(process.env.MESSAGE_MAX_LENGTH, 2000),
+    // Messages one user may send per window (REST and Socket.IO share the budget)
+    rateLimit: toInt(process.env.MESSAGE_RATE_LIMIT, 60),
+    rateWindowSeconds: toInt(process.env.MESSAGE_RATE_WINDOW_SECONDS, 60),
+  },
+
+  // Images sent in private chat. Stored OUTSIDE the public /media folder and
+  // served only to the two participants (GET /messages/:id/image).
+  chatImages: {
+    maxSizeMb: Number(process.env.CHAT_IMAGE_MAX_SIZE_MB) || 5,
+    // Stored images are resized to fit within this many pixels per side
+    maxDimension: toInt(process.env.CHAT_IMAGE_MAX_DIMENSION, 1600),
+    privateDir: path.resolve(__dirname, '../..', process.env.PRIVATE_UPLOADS_DIR || 'uploads-private'),
+  },
+
+  // Private video calls (Phase 12). Media flows peer-to-peer (WebRTC); the API
+  // only relays signalling and stores call metadata — never audio/video.
+  calls: {
+    // Seconds an unanswered call rings before it becomes "missed"
+    ringTimeoutSeconds: toInt(process.env.CALL_RING_TIMEOUT_SECONDS, 30),
+    // Seconds an accepted call may take to report a connected peer connection
+    connectTimeoutSeconds: toInt(process.env.CALL_CONNECT_TIMEOUT_SECONDS, 45),
+    // Seconds a participant may be away (refresh, network drop) before the call ends
+    rejoinGraceSeconds: toInt(process.env.CALL_REJOIN_GRACE_SECONDS, 20),
+    // Signalling messages one user may send per 10 seconds (SDP + ICE candidates)
+    signalRateLimit: toInt(process.env.CALL_SIGNAL_RATE_LIMIT, 300),
+    // Calls one user may start per minute
+    initiateRateLimit: toInt(process.env.CALL_INITIATE_RATE_LIMIT, 10),
+  },
+
+  // Admin panel (Phase 14)
+  admin: {
+    defaultPageSize: toInt(process.env.ADMIN_DEFAULT_PAGE_SIZE, 20),
+    maxPageSize: toInt(process.env.ADMIN_MAX_PAGE_SIZE, 100),
+    // Longest date range accepted by dashboard/activity filters
+    maxRangeDays: toInt(process.env.ADMIN_MAX_RANGE_DAYS, 366),
+    // Admin API requests per admin per minute, and status changes per minute
+    requestRateLimit: toInt(process.env.ADMIN_RATE_LIMIT_PER_MINUTE, 300),
+    actionRateLimit: toInt(process.env.ADMIN_ACTION_RATE_LIMIT_PER_MINUTE, 30),
+  },
+
+  // User reports (Phase 13)
+  reports: {
+    // Reports one user may submit per hour (duplicates of an open report are not counted twice)
+    rateLimitPerHour: toInt(process.env.REPORT_RATE_LIMIT_PER_HOUR, 10),
+  },
+
+  // ICE servers handed to authenticated browsers (GET /calls/ice-servers).
+  webrtc: {
+    stunUrls: splitList(process.env.WEBRTC_STUN_URL || 'stun:stun.l.google.com:19302'),
+    turnUrls: splitList(process.env.WEBRTC_TURN_URL || ''),
+    // Static TURN credentials (simple setups). Prefer WEBRTC_TURN_SECRET.
+    turnUsername: process.env.WEBRTC_TURN_USERNAME || '',
+    turnCredential: process.env.WEBRTC_TURN_CREDENTIAL || '',
+    // Shared secret of a TURN server using the "TURN REST API" scheme
+    // (coturn use-auth-secret): the API mints short-lived per-user credentials.
+    turnSecret: process.env.WEBRTC_TURN_SECRET || '',
+    turnCredentialTtlSeconds: toInt(process.env.WEBRTC_TURN_TTL_SECONDS, 3600),
+  },
+
+  // Optional. When set, Socket.IO events/presence and the message rate limit are
+  // shared through Redis, so several API instances can run behind a load balancer.
+  redis: {
+    url: process.env.REDIS_URL || '',
+  },
+
+  // SMTP Email Delivery (for production OTP)
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: toInt(process.env.SMTP_PORT, 587),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || '',
+    secure: process.env.SMTP_SECURE === 'true',
+  },
+
+  // Twilio SMS Delivery (for production OTP)
+  twilio: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    authToken: process.env.TWILIO_AUTH_TOKEN || '',
+    fromNumber: process.env.TWILIO_FROM_NUMBER || '',
+  },
 };
 
 const PLACEHOLDER_SECRET = /^(|replace_with.*|changeme|secret)$/i;
@@ -144,6 +240,28 @@ function validateEnvironment(cfg = config) {
 }
 
 /**
+ * Extended operational readiness check for production deployment.
+ * Validates external infrastructure (TURN relay, real email/SMS provider credentials).
+ */
+function validateProductionReadiness(cfg = config) {
+  const issues = [...validateEnvironment(cfg)];
+  if (cfg.otp.provider === 'smtp' || cfg.otp.provider === 'production') {
+    if (!cfg.smtp.host || !cfg.smtp.user || !cfg.smtp.pass || !cfg.smtp.from) {
+      issues.push('SMTP settings (SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM) must be set for production email delivery');
+    }
+  }
+  if (cfg.otp.provider === 'twilio' || cfg.otp.provider === 'production') {
+    if (!cfg.twilio.accountSid || !cfg.twilio.authToken || !cfg.twilio.fromNumber) {
+      issues.push('Twilio settings (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER) must be set for production SMS delivery');
+    }
+  }
+  if (cfg.webrtc.turnUrls.length === 0) {
+    issues.push('WEBRTC_TURN_URL must be configured with a TURN relay server in production for reliable WebRTC calls across NATs');
+  }
+  return issues;
+}
+
+/**
  * Secrets used for signing. Outside production a missing secret falls back to
  * a per-process random value (tokens then stop working after a restart).
  */
@@ -159,5 +277,6 @@ config.jwtSecret = () => signingSecret(config.jwt.secret);
 config.otpSecret = () => signingSecret(config.otp.secret || config.jwt.secret);
 
 config.validateEnvironment = validateEnvironment;
+config.validateProductionReadiness = validateProductionReadiness;
 
 module.exports = config;

@@ -82,7 +82,7 @@ describe('profile view', () => {
   it('shows a placeholder when there is no picture', async () => {
     signedIn({ 'GET /profile': ok({ ...PROFILE, profilePhotoUrl: null }) });
     renderApp('/profile');
-    expect(await screen.findByRole('img', { name: 'No profile picture' })).toHaveTextContent('AP');
+    expect(await screen.findByRole('img', { name: /no profile picture/i })).toHaveTextContent('AP');
   });
 
   it('offers to complete the profile from the dashboard', async () => {
@@ -133,7 +133,8 @@ describe('create profile', () => {
       lifestyle: null,
       bio: null,
     });
-    expect(await screen.findByText('Profile created successfully.')).toBeInTheDocument();
+    const messages = await screen.findAllByText('Profile created successfully.');
+    expect(messages.length).toBeGreaterThan(0);
   });
 
   it('uploads the chosen picture right after creating the profile (no face detection)', async () => {
@@ -262,7 +263,7 @@ describe('profile picture', () => {
 
     expect(await screen.findByText('Profile picture removed.')).toBeInTheDocument();
     expect(api.callsTo('DELETE', '/profile/photo')).toHaveLength(1);
-    expect(screen.getAllByRole('img', { name: 'No profile picture' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('img', { name: /no profile picture/i }).length).toBeGreaterThan(0);
   });
 
   it('takes a picture with the camera and uploads it — without face detection', async () => {

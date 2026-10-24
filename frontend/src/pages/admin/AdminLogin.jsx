@@ -20,7 +20,7 @@ function AdminLogin() {
     event.preventDefault();
     setError('');
     try {
-      await loginWithPassword(identifier.trim(), password, { admin: true });
+      await loginWithPassword(identifier.trim(), password, { admin: true, returnTo: state?.from });
       navigate(USER_PATHS.LOGIN_VERIFICATION);
     } catch (err) {
       setError(err.message);

@@ -3,13 +3,15 @@
  *
  *   const api = mockApi({ 'POST /auth/login': { status: 200, body: {...} } });
  *   renderApp('/login');
- *   api.calls  → [{ method, path, body, headers }]
+ *   api.calls  → [{ method, path, query, body, headers }]
  */
 import { render } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { vi } from 'vitest';
 import { AuthProvider } from '../context/AuthContext.jsx';
+import { ThemeProvider } from '../context/ThemeContext.jsx';
 import AppRoutes from '../routes/AppRoutes.jsx';
+import { ToastProvider } from '../components/common/Toast.jsx';
 
 export function mockApi(routes = {}) {
   const calls = [];
@@ -19,10 +21,12 @@ export function mockApi(routes = {}) {
   };
 
   global.fetch = vi.fn(async (url, options = {}) => {
-    const path = new URL(url).pathname.replace(/^\/api\/v1/, '');
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace(/^\/api\/v1/, '');
+    const query = Object.fromEntries(parsed.searchParams);
     const method = options.method || 'GET';
     const body = options.body instanceof FormData ? options.body : options.body ? JSON.parse(options.body) : undefined;
-    calls.push({ method, path, body, headers: options.headers || {} });
+    calls.push({ method, path, query, body, headers: options.headers || {} });
 
     let handler = handlers[`${method} ${path}`];
     if (typeof handler === 'function') handler = handler({ body, headers: options.headers || {} });
@@ -46,12 +50,16 @@ export function LocationProbe() {
 
 export function renderApp(path = '/') {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AuthProvider>
-        <AppRoutes />
-        <LocationProbe />
-      </AuthProvider>
-    </MemoryRouter>
+    <ThemeProvider>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <AuthProvider>
+            <AppRoutes />
+            <LocationProbe />
+          </AuthProvider>
+        </MemoryRouter>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
 

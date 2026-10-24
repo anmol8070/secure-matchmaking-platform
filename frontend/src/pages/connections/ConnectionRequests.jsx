@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Alert from '../../components/common/Alert.jsx';
+import { useToast } from '../../components/common/Toast.jsx';
 import Avatar from '../../components/profile/Avatar.jsx';
 import { connectionService } from '../../services/connectionService.js';
 import { USER_PATHS } from '../../routes/paths.js';
@@ -30,7 +31,7 @@ function ConnectionRequests() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
+  const notify = useToast();
   const [busyId, setBusyId] = useState(null);
   const inFlight = useRef(false);
 
@@ -56,11 +57,10 @@ function ConnectionRequests() {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusyId(id);
-    setNotice(null);
     setError(null);
     try {
       await connectionService.updateConnectionRequest(id, action);
-      setNotice(ACTION_MESSAGES[action]);
+      notify(ACTION_MESSAGES[action]);
     } catch (err) {
       setError(err.message || 'Unable to process request.');
     } finally {
@@ -71,7 +71,6 @@ function ConnectionRequests() {
   };
 
   const switchTab = (id) => {
-    setNotice(null);
     setError(null);
     setTab(id);
   };
@@ -99,7 +98,6 @@ function ConnectionRequests() {
         ))}
       </div>
 
-      <Alert type="success">{notice}</Alert>
       <Alert type="error">{error}</Alert>
 
       {loading ? (

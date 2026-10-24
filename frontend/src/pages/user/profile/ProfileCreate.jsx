@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import Alert from '../../../components/common/Alert.jsx';
+import { useToast } from '../../../components/common/Toast.jsx';
 import ProfileForm from '../../../components/profile/ProfileForm.jsx';
 import ProfilePhotoUploader from '../../../components/profile/ProfilePhotoUploader.jsx';
 import useOwnProfile from '../../../hooks/useOwnProfile.js';
 import { profileService } from '../../../services/profileService.js';
+import { takeVerificationPhoto } from '../../../services/pendingProfilePhoto.js';
 import { USER_PATHS } from '../../../routes/paths.js';
 
 /** /profile/create — first-time profile, with an optional picture. */
 function ProfileCreate() {
   const navigate = useNavigate();
+  const notify = useToast();
   const { status, error } = useOwnProfile();
-  const [photo, setPhoto] = useState(null);
+  const [photo, setPhoto] = useState(() => takeVerificationPhoto());
 
   if (status === 'loading') return <p className="muted" role="status">Loading…</p>;
   if (status === 'ready') return <Navigate to={USER_PATHS.PROFILE_EDIT} replace />;
@@ -27,6 +30,7 @@ function ProfileCreate() {
         warning = `Your profile was saved, but the picture could not be uploaded: ${err.message}`;
       }
     }
+    notify('Profile created successfully.');
     navigate(USER_PATHS.PROFILE, { replace: true, state: { message: 'Profile created successfully.', warning } });
   };
 
@@ -38,7 +42,7 @@ function ProfileCreate() {
       <ProfileForm submitLabel="Save profile" onSubmit={create} onCancel={() => navigate(USER_PATHS.DASHBOARD)}>
         <fieldset>
           <legend>Profile picture (optional)</legend>
-          <ProfilePhotoUploader mode="deferred" onFileChange={setPhoto} />
+          <ProfilePhotoUploader mode="deferred" initialFile={photo} onFileChange={setPhoto} />
         </fieldset>
       </ProfileForm>
     </section>

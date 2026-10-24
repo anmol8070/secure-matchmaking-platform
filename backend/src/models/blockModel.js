@@ -28,13 +28,14 @@ class BlockModel extends BaseModel {
     return Boolean(record);
   }
 
-  async blockUser(blockerId, blockedId, trx) {
+  async blockUser(blockerId, blockedId, reason = null, trx) {
     const existing = await this.query(trx).where({ blocker_id: blockerId, blocked_id: blockedId }).first();
     if (existing) return existing.block_id;
     return this.insertAndGetId(
       {
         blocker_id: blockerId,
         blocked_id: blockedId,
+        reason: reason || null,
         created_at: new Date(),
       },
       trx

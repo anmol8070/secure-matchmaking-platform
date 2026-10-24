@@ -12,6 +12,7 @@
  * server-side; only the resulting URL is stored and returned.
  */
 const config = require('../../config/environment');
+const { signProfilePhotoUrl } = require('./photoSignature');
 
 const PROVIDERS = {
   local: () => require('./localStorageProvider'),
@@ -26,6 +27,7 @@ function getStorage(name = config.media.storageProvider) {
 /** Absolute URL for a stored reference (relative paths are served by this API). */
 function toPublicUrl(storedUrl) {
   if (!storedUrl) return null;
+  if (String(storedUrl).includes('/profile-photos/')) return signProfilePhotoUrl(storedUrl);
   return storedUrl.startsWith('/') ? `${config.media.publicBaseUrl}${storedUrl}` : storedUrl;
 }
 

@@ -31,11 +31,12 @@ function ProfileView({ profile, onChangePhoto }) {
 
   return (
     <article className="card profile-view">
+      <div className="profile-view__cover" aria-hidden="true" />
       <header className="profile-view__header">
         <Avatar src={profile.profilePhotoUrl} name={profile.name} />
-        <div>
+        <div className="profile-view__identity">
           <h1>{profile.name}</h1>
-          <p className="muted">{[profile.age && `${profile.age} years`, profile.location].filter(Boolean).join(' · ')}</p>
+          <p className="profile-view__lede">{[profile.age && `${profile.age} years`, profile.location].filter(Boolean).join(' · ')}</p>
           <div className="actions">
             <Link to={USER_PATHS.PROFILE_EDIT} className="btn btn--primary">
               Edit profile
@@ -43,6 +44,9 @@ function ProfileView({ profile, onChangePhoto }) {
             <button type="button" className="btn" onClick={onChangePhoto}>
               Change photo
             </button>
+            <Link to={USER_PATHS.PREFERENCES} className="btn btn--ghost">
+              Preferences &amp; hobbies
+            </Link>
           </div>
         </div>
       </header>
@@ -59,19 +63,21 @@ function ProfileView({ profile, onChangePhoto }) {
         )}
       </section>
 
-      <dl className="details">
-        {rows.map(([label, value]) => (
-          <div key={label} className="details__row">
-            <dt>{label}</dt>
-            <dd>{value || <span className="muted">Not added</span>}</dd>
-          </div>
-        ))}
-      </dl>
+      <div className="profile-view__body">
+        <dl className="details">
+          {rows.map(([label, value]) => (
+            <div key={label} className="details__row">
+              <dt>{label}</dt>
+              <dd>{value || <span className="muted">Not added</span>}</dd>
+            </div>
+          ))}
+        </dl>
 
-      <section>
-        <h2>About me</h2>
-        {profile.bio ? <p className="bio">{profile.bio}</p> : <p className="muted">Not added</p>}
-      </section>
+        <section className="profile-view__about">
+          <h2>About me</h2>
+          {profile.bio ? <p className="bio">{profile.bio}</p> : <p className="muted">Not added</p>}
+        </section>
+      </div>
     </article>
   );
 }

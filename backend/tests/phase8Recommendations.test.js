@@ -31,6 +31,21 @@ const matchingService = require('../src/services/matchingService');
 const feedbackService = require('../src/services/feedbackService');
 const { Profile, Block, Match, ActivityFeedback } = require('../src/models');
 
+// Phase 13: recommendations are filtered by privacyService. These unit tests
+// mock the models, so use the real filter with default settings and a plain
+// member viewer (what an unconnected user sees by default).
+jest.mock('../src/services/privacyService', () => {
+  const actual = jest.requireActual('../src/services/privacyService');
+  return {
+    ...actual,
+    recommendationContext: jest.fn(async () => ({
+      visible: () => true,
+      allowed: () => actual.allowedFields(actual.DEFAULTS, actual.RELATIONSHIP.MEMBER),
+      filter: (item, profile) => actual.filterMatchItem(item, profile, actual.DEFAULTS, actual.RELATIONSHIP.MEMBER),
+    })),
+  };
+});
+
 jest.mock('../src/models/profileModel');
 jest.mock('../src/models/blockModel');
 jest.mock('../src/models/matchModel');

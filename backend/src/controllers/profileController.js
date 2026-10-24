@@ -5,7 +5,12 @@
  */
 const profileService = require('../services/profileService');
 const { sendSuccess, sendCreated } = require('../utils/apiResponse');
-const { notImplementedHandler } = require('../utils/notImplemented');
+
+/** GET /profile/:userId — another member's profile, privacy-filtered (Phase 13). */
+async function getProfileByUserId(req, res) {
+  const profile = await profileService.getProfileForViewer(req.auth.userId, req.validated.params.userId);
+  sendSuccess(res, { data: profile });
+}
 
 async function getOwnProfile(req, res) {
   sendSuccess(res, { data: await profileService.getOwnProfile(req.auth.userId) });
@@ -38,5 +43,5 @@ module.exports = {
   uploadProfilePhoto,
   removeProfilePhoto,
   // Viewing other members' profiles comes with matching/connections (later phase).
-  getProfileByUserId: notImplementedHandler,
+  getProfileByUserId,
 };

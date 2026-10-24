@@ -11,7 +11,7 @@ function signedInAs(user) {
 
 describe('public routes', () => {
   it.each([
-    ['/', /find meaningful connections/i],
+    ['/', /some connections change everything/i],
     ['/register', /create your account/i],
     ['/otp-verification', /verify your account/i],
     ['/login', /^log in$/i],
@@ -56,7 +56,7 @@ describe('protected routes', () => {
     renderApp('/dashboard');
 
     expect(await screen.findByRole('heading', { name: /welcome/i })).toBeInTheDocument();
-    expect(screen.getByText(USER.email)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(USER.email))).toBeInTheDocument();
     expect(api.callsTo('GET', '/auth/me')[0].headers.Authorization).toMatch(/^Bearer /);
   });
 
@@ -70,6 +70,20 @@ describe('protected routes', () => {
     signedInAs(USER);
     renderApp('/login');
     await waitFor(() => expect(location()).toBe('/dashboard'));
+  });
+
+  it('keeps the session through a temporary /auth/me failure (rate limit, network)', async () => {
+    sessionStorage.setItem('mm.accessToken', fakeAccessToken());
+    const api = mockApi({
+      'GET /auth/me': [
+        { status: 429, body: { success: false, message: 'Too many requests.' } },
+        { status: 200, body: { success: true, data: USER } },
+      ],
+    });
+    renderApp('/dashboard');
+    expect(await screen.findByRole('heading', { name: /welcome/i }, { timeout: 3000 })).toBeInTheDocument();
+    expect(api.callsTo('GET', '/auth/me')).toHaveLength(2);
+    expect(sessionStorage.getItem('mm.accessToken')).not.toBeNull();
   });
 
   it('treats a rejected stored token as an expired session', async () => {
@@ -108,6 +122,8 @@ describe('admin routes', () => {
   it('shows the admin dashboard to admins', async () => {
     signedInAs(ADMIN);
     renderApp('/admin');
-    expect(await screen.findByRole('heading', { name: /admin dashboard/i })).toBeInTheDocument();
+    // The real dashboard (Phase 14); its data has its own tests in pages/admin/admin.test.jsx.
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Users' })).toBeInTheDocument();
   });
 });

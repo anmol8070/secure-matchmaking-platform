@@ -62,9 +62,33 @@ function isUniqueViolation(err) {
   return Boolean(err) && (err.code === '23505' || err.errno === 1062);
 }
 
+/**
+ * True when the database aborted the transaction to resolve a lock conflict
+ * (deadlock or lock-wait timeout). Retrying the whole transaction is safe.
+ */
+function isRetryableLockError(err) {
+  return Boolean(err) && (err.errno === 1213 || err.errno === 1205 || err.code === '40P01' || err.code === '40001');
+}
+
+/**
+ * Runs a transactional function again when the database aborted it because
+ * of a lock conflict (common for concurrent inserts on InnoDB). Other errors
+ * are thrown unchanged.
+ */
+async function withLockRetry(fn, { attempts = 4 } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRetryableLockError(err) || attempt >= attempts) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 10 * attempt + Math.floor(Math.random() * 20)));
+    }
+  }
+}
+
 /** Minimal, non-sensitive description of a DB error for logs. */
 function describeDbError(err) {
   return { code: err.code, errno: err.errno, constraint: err.constraint, table: err.table };
 }
 
-module.exports = { translateDbError, describeDbError, isConnectionError, isUniqueViolation };
+module.exports = { translateDbError, describeDbError, isConnectionError, isUniqueViolation, isRetryableLockError, withLockRetry };

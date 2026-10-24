@@ -28,5 +28,14 @@ module.exports = Object.freeze({
     'connection_cancelled',
     'connection_removed',
   ]),
+  // Phase 12 (video_calls.status)
+  CALL_STATUSES: Object.freeze(['ringing', 'accepted', 'connected', 'rejected', 'missed', 'cancelled', 'busy', 'ended', 'failed']),
+  // Phase 13
+  REPORT_REASONS: Object.freeze(['harassment', 'spam', 'fake_profile', 'inappropriate_content', 'threatening', 'other']),
+  REPORT_ACTIONS: Object.freeze(['none', 'warning', 'content_removed', 'suspended', 'banned']),
+  PRIVACY_VISIBILITY: Object.freeze(['everyone', 'connections', 'nobody']),
+  PROFILE_VISIBILITY: Object.freeze(['everyone', 'connections']),
+  // Phase 14
+  ADMIN_AUDIT_ACTIONS: Object.freeze(['user_suspended', 'user_reactivated', 'report_status_changed', 'ml_training_run']),
   VERIFICATION_STATUSES: Object.freeze(['pending', 'passed', 'failed', 'expired']),
 });

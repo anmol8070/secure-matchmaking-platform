@@ -27,6 +27,25 @@ jest.mock('../src/models', () => ({
   User: { findByPk: jest.fn() },
 }));
 
+// Cards are privacy-filtered (Phase 13). With default settings a member sees
+// name, photo, age and location — the card these tests check. Privacy rules
+// themselves are covered by tests/phase13Privacy.test.js and the integration suite.
+jest.mock('../src/services/privacyService', () => {
+  const { ageFromDateOfBirth } = jest.requireActual('../src/utils/age');
+  const card = (userId, p) => ({
+    userId: Number(userId),
+    name: p.name,
+    profilePicture: p.profile_photo_url || null,
+    age: ageFromDateOfBirth(p.date_of_birth),
+    location: [p.city, p.state, p.country].filter(Boolean).join(', ') || null,
+  });
+  return {
+    cardsFor: async (viewerId, entries) => new Map(entries.filter((e) => e.profile).map((e) => [Number(e.userId), card(e.userId, e.profile)])),
+    cardFor: async (viewerId, userId, profile) => (profile ? card(userId, profile) : null),
+    RELATIONSHIP: { MEMBER: 'member' },
+  };
+});
+
 const connectionService = require('../src/services/connectionService');
 const { connectionEvents, CONNECTION_EVENTS } = require('../src/services/connectionEvents');
 const { ActivityFeedback, Block, ConnectionRequest, Profile, User } = require('../src/models');

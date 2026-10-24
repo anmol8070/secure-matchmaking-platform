@@ -5,10 +5,11 @@
  *   browser: live camera → capture → face detection (MediaPipe) → result
  *   completeVerification(token, result) → passed → caller issues the JWT
  *
- * This answers only "is exactly one live face present?" — never "whose face
- * is this?". No image is received or stored; only the detector outcome is
- * recorded in login_verifications.detection_result. There is no relationship
- * with profile pictures (profileService), which are a separate feature.
+ * This answers "is exactly one face reported for this login attempt?".
+ * The result is bound to that attempt's opaque token, which expires and
+ * cannot be reused. A client profile_matched flag is not evidence: the
+ * server never receives the image, so it cannot check a face comparison.
+ * No camera image is received or stored. Login is not identity recognition.
  *
  * The temporary token is an opaque random value (stored as a SHA-256 hash),
  * single-use, short-lived and NOT a JWT — the auth middleware cannot accept it.
@@ -27,11 +28,20 @@ const MESSAGES = Object.freeze({
   TOO_MANY_ATTEMPTS: 'Too many verification attempts. Please log in again.',
 });
 
-/** Initial rule: face detected AND exactly one face = passed. */
+/** Face detected AND exactly one face = passed. */
 function evaluateDetection({ face_detected: faceDetected, face_count: faceCount }) {
   if (!faceDetected || faceCount === 0) return 'no_face';
   if (faceCount > 1) return 'multiple_faces';
   return 'passed';
+}
+
+/**
+ * Presence outcome only. Extra client fields, including a profile-photo
+ * claim, do not change the result. Kept so callers and tests have one
+ * function for "what the server is willing to believe".
+ */
+function applyProfileRule(outcome) {
+  return outcome;
 }
 
 /** Creates a pending verification session after successful authentication. */
@@ -68,7 +78,7 @@ async function completeVerification(token, detection) {
       return { outcome: 'invalid' };
     }
 
-    const outcome = evaluateDetection(detection);
+    const outcome = applyProfileRule(evaluateDetection(detection));
     const attempts = row.attempt_count + 1;
     const exhausted = outcome !== 'passed' && attempts >= config.loginVerification.maxAttempts;
 
@@ -77,13 +87,19 @@ async function completeVerification(token, detection) {
       .update({
         attempt_count: attempts,
         attempted_at: now,
-        // Detector outcome only — no image, no biometric data.
+        // Security audit: presence outcome and challenge verification only.
+        // The server does NOT receive images or verify biometric identity.
         detection_result: JSON.stringify({
-          face_detected: detection.face_detected,
-          face_count: detection.face_count,
+          face_detected: Boolean(detection.face_detected),
+          face_count: Number(detection.face_count),
           ...(detection.confidence !== undefined && { confidence: detection.confidence }),
           ...(detection.detector && { detector: detection.detector }),
+          client_profile_flag_present: typeof detection.profile_matched === 'boolean',
           outcome,
+          face_presence_verified: outcome === 'passed',
+          biometric_identity_verified: false,
+          verification_mechanism: 'live_presence_session_challenge',
+          attempted_at: now.toISOString(),
         }),
         ...(outcome === 'passed' && { verification_status: 'passed', verified_at: now }),
         ...(exhausted && { verification_status: 'failed' }),
@@ -106,4 +122,4 @@ async function completeVerification(token, detection) {
   }
 }
 
-module.exports = { startVerification, completeVerification, evaluateDetection, MESSAGES };
+module.exports = { startVerification, completeVerification, evaluateDetection, applyProfileRule, MESSAGES };

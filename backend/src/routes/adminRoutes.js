@@ -1,42 +1,68 @@
 /**
- * /api/v1/admin — admin panel API.
- * Login is public (role-restricted); every other route requires an
- * authenticated admin. Admin features themselves are later-phase placeholders (501).
+ * /api/v1/admin — admin panel API (Phase 14).
+ *
+ * POST /login is public but only accepts admin accounts (then live
+ * verification, as for users). Every other route requires an authenticated
+ * admin: requireAuth re-reads the session, role and account status from the
+ * database on every request, then requireRole('admin'). Ordinary users get
+ * 403. Requests are rate-limited per admin, moderation actions more strictly.
  */
 const { Router } = require('express');
 const admin = require('../controllers/adminController');
-const { validate, z, id } = require('../validators/commonValidator');
+const { validate } = require('../validators/commonValidator');
 const { loginBody } = require('../validators/authValidator');
+const v = require('../validators/adminValidator');
+const config = require('../config/environment');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/roleMiddleware');
-const { authLimiter, failedAttemptLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, failedAttemptLimiter, createLimiter } = require('../middleware/rateLimiter');
 const { ROLES } = require('../constants/enums');
 
 const router = Router();
-const userIdParams = z.object({ userId: id() });
-const reportIdParams = z.object({ reportId: id() });
+
+const perAdmin = (req) => `admin:${req.auth.userId}`;
+const adminLimiter = createLimiter({
+  limit: config.admin.requestRateLimit,
+  windowMinutes: 1,
+  keyGenerator: perAdmin,
+  message: 'Too many admin requests. Please slow down.',
+});
+const actionLimiter = createLimiter({
+  limit: config.admin.actionRateLimit,
+  windowMinutes: 1,
+  keyGenerator: (req) => `admin-action:${req.auth.userId}`,
+  message: 'Too many moderation actions in a short time. Please wait a moment.',
+});
+const trainingLimiter = createLimiter({
+  limit: 2,
+  windowMinutes: 10,
+  keyGenerator: (req) => `admin-train:${req.auth.userId}`,
+  message: 'Model training was started recently. Please wait before starting it again.',
+});
 
 router.post('/login', authLimiter, failedAttemptLimiter, validate({ body: loginBody }), admin.login);
 
 // Everything below: authenticated admins only.
-router.use(requireAuth, requireRole(ROLES.ADMIN));
+router.use(requireAuth, requireRole(ROLES.ADMIN), adminLimiter);
 
-router.get('/dashboard', admin.getDashboard);
+// Overview and monitoring
+router.get('/dashboard', validate({ query: v.rangeQuery }), admin.getDashboard);
+router.get('/activity', validate({ query: v.rangeQuery }), admin.listActivity);
+router.get('/monitoring', admin.getMonitoring);
+router.get('/ml', admin.getMlMonitoring);
+router.post('/ml/train', trainingLimiter, admin.trainMlModel);
 
 // User management
-router.get('/users', admin.listUsers);
-router.get('/users/:userId', validate({ params: userIdParams }), admin.getUser);
-router.patch('/users/:userId/status', validate({ params: userIdParams }), admin.updateUserStatus);
+router.get('/users', validate({ query: v.listUsersQuery }), admin.listUsers);
+router.get('/users/:id', validate({ params: v.idParams }), admin.getUser);
+router.put('/users/:id/status', actionLimiter, validate({ params: v.idParams, body: v.userStatusBody }), admin.updateUserStatus);
 
-// Report management
-router.get('/reports', admin.listReports);
-router.patch('/reports/:reportId', validate({ params: reportIdParams }), admin.reviewReport);
+// Report moderation
+router.get('/reports', validate({ query: v.listReportsQuery }), admin.listReports);
+router.get('/reports/:id', validate({ params: v.idParams }), admin.getReport);
+router.put('/reports/:id/status', actionLimiter, validate({ params: v.idParams, body: v.reportStatusBody }), admin.updateReportStatus);
 
-// Activity and monitoring
-router.get('/activity', admin.listActivity);
-router.get('/monitoring', admin.getMonitoring);
-
-// ML Management
-router.post('/ml/train', admin.trainMlModel);
+// Audit history (read-only — there is no route that changes it)
+router.get('/audit-logs', validate({ query: v.auditQuery }), admin.listAuditLogs);
 
 module.exports = router;

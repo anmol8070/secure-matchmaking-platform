@@ -99,7 +99,7 @@ describe('enum constants match the database CHECK constraints', () => {
       await db('connection_requests').insert({ sender_id: a, receiver_id: await newUserId(), status });
     }
     for (const status of ENUMS.REPORT_STATUSES) {
-      await db('reports').insert({ reporter_id: a, reported_id: await newUserId(), reason: 'test', status });
+      await db('reports').insert({ reporter_id: a, reported_id: await newUserId(), reason: 'other', status });
     }
     for (const action of ENUMS.ACTIVITY_ACTIONS) {
       await db('activity_feedback').insert({ user_id: a, target_user_id: await newUserId(), action });

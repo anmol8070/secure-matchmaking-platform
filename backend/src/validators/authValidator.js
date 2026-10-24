@@ -83,6 +83,7 @@ const completeVerificationBody = z
     face_count: z.number({ error: 'face_count must be a number' }).int().min(0).max(50),
     confidence: z.number().min(0).max(1).optional(),
     detector: z.string().max(60).optional(),
+    profile_matched: z.boolean().optional(),
   })
   .strict();
 
