@@ -24,8 +24,10 @@ const PROTECTED_MODULES = [
   ['/recommendations', require('./routes/recommendationRoutes')],
   ['/connections', require('./routes/connectionRoutes')],
   ['/messages', require('./routes/messageRoutes')],
+  ['/calls', require('./routes/callRoutes')],
   ['/reports', require('./routes/reportRoutes')],
   ['/blocks', require('./routes/blockRoutes')],
+  ['/privacy', require('./routes/privacyRoutes')],
   ['/feedback', require('./routes/feedbackRoutes')],
 ];
 

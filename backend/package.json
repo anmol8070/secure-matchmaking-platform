@@ -16,7 +16,10 @@
     "db:status": "knex migrate:list",
     "db:seed": "knex seed:run",
     "db:reset": "node scripts/db-reset.js",
-    "admin:promote": "node scripts/promote-admin.js"
+    "admin:promote": "node scripts/promote-admin.js",
+    "smoke:chat": "node scripts/chat-smoke.js",
+    "e2e:video": "node scripts/video-call-e2e.js",
+    "e2e:video:cleanup": "node scripts/video-call-e2e-cleanup.js"
   },
   "engines": {
     "node": ">=18"
@@ -28,6 +31,7 @@
     ]
   },
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
@@ -39,11 +43,15 @@
     "multer": "^2.4.0",
     "mysql2": "^3.24.5",
     "pg": "^8.23.1",
+    "redis": "^5.12.1",
     "sharp": "^0.35.5",
+    "socket.io": "^4.8.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "jest": "^30.5.2",
+    "puppeteer-core": "^24.43.1",
+    "socket.io-client": "^4.8.4",
     "supertest": "^7.3.1"
   }
 }

@@ -50,9 +50,16 @@ export async function detectFaces(source) {
   const detector = await loadDetector();
   const { detections } = detector.detect(source);
   const scores = detections.map((d) => d.categories?.[0]?.score ?? 0);
+  const best = detections.reduce((top, item) => {
+    const score = item.categories?.[0]?.score ?? 0;
+    return score > (top?.categories?.[0]?.score ?? -1) ? item : top;
+  }, null);
+  const raw = best?.boundingBox;
+  const box = raw?.width && raw?.height ? { x: raw.originX, y: raw.originY, w: raw.width, h: raw.height } : undefined;
   return {
     faceCount: detections.length,
     ...(scores.length > 0 && { confidence: Math.round(Math.max(...scores) * 1000) / 1000 }),
+    ...(box && { box }),
     detector: DETECTOR_NAME,
   };
 }

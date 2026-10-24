@@ -82,6 +82,6 @@ describe('profile response', () => {
   it('builds location and an absolute picture URL', () => {
     const res = toResponse(row);
     expect(res.location).toBe('Pune, India');
-    expect(res.profilePhotoUrl).toMatch(/^http:\/\/localhost:\d+\/media\/profile-photos\/.+\.webp$/);
+    expect(res.profilePhotoUrl).toMatch(/^http:\/\/localhost:\d+\/media\/profile-photos\/.+\.webp\?exp=\d+&sig=[a-f0-9]+$/);
   });
 });

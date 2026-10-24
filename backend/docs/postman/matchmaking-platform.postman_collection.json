@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Matchmaking Platform API",
-    "description": "Phases 3-10: base API, authentication (registration, OTP, login, live presence verification, JWT, logout), profiles with profile pictures, and preferences, hobbies and quiz answers.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded. Phase 8 & 9: Match Ranking & Recommendations added.\n\nPhase 10 (folder 12): connection requests and connections. Set connectionReceiverId and receiverAccessToken first.",
+    "description": "Phases 3-14: base API, authentication (registration, OTP, login, live presence verification, JWT, logout), profiles with profile pictures, and preferences, hobbies and quiz answers.\n\nRun the folders in order (they share collection variables). Requires the backend running in development with OTP_PROVIDER=dev,\nbecause OTP codes are read from the development outbox (GET /dev/otp). Command line:\n  npx newman run docs/postman/matchmaking-platform.postman_collection.json --working-dir docs/postman\n\nAuthentication: protected requests send `Authorization: Bearer {{accessToken}}`. The access token is only issued by\nPOST /auth/login-verification/complete, after credentials/OTP AND the live face-presence check succeeded. Phase 8 & 9: Match Ranking & Recommendations added.\n\nPhase 10 (folder 12): connection requests and connections. Set connectionReceiverId and receiverAccessToken first.\nPhase 11 (folder 13): private chat REST endpoints. Set chatPartnerId and chatPartnerAccessToken (an ACCEPTED connection) first.\nFolder 13 also sends/downloads an image (pick a file in the form-data \"image\" field). Folder 16: blocking (runs last).\nSocket.IO events: run `npm run smoke:chat` (see docs/phase-11-chat.md).\nFolder 14: video calls (REST). Folder 15: privacy settings & reports (Phase 13). Signalling is Socket.IO only (npm run e2e:video).\nFolder 17: admin panel (Phase 14) — needs adminAccessToken.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -59,6 +59,42 @@
     },
     {
       "key": "currentUserId",
+      "value": ""
+    },
+    {
+      "key": "chatPartnerId",
+      "value": ""
+    },
+    {
+      "key": "chatPartnerAccessToken",
+      "value": ""
+    },
+    {
+      "key": "chatMessageId",
+      "value": ""
+    },
+    {
+      "key": "chatMyUserId",
+      "value": ""
+    },
+    {
+      "key": "chatImagePath",
+      "value": ""
+    },
+    {
+      "key": "callId",
+      "value": ""
+    },
+    {
+      "key": "reportId",
+      "value": ""
+    },
+    {
+      "key": "adminAccessToken",
+      "value": ""
+    },
+    {
+      "key": "adminUserId",
       "value": ""
     }
   ],
@@ -298,7 +334,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.collectionVariables.get('otp') === '000000') pm.request.body.raw = pm.request.body.raw.replace('000000', '111111');"
+                  "if (pm.variables.get('otp') === '000000') pm.request.body.raw = pm.request.body.raw.replace('000000', '111111');"
                 ]
               }
             },
@@ -715,7 +751,7 @@
                 "value": "Bearer {{accessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/matches"
+            "url": "{{baseUrl}}/reports"
           },
           "event": [
             {
@@ -2559,7 +2595,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 200', () => pm.response.to.have.status(200));",
-                  "pm.test('contains request', () => pm.expect(pm.response.json().data.requests.map((r) => r.id)).to.include(Number(pm.collectionVariables.get('connectionId'))));"
+                  "pm.test('contains request', () => pm.expect(pm.response.json().data.requests.map((r) => r.id)).to.include(Number(pm.variables.get('connectionId'))));"
                 ]
               }
             }
@@ -2715,7 +2751,7 @@
                 "exec": [
                   "pm.test('status is 200', () => pm.response.to.have.status(200));",
                   "const list = pm.response.json().data.connections;",
-                  "pm.test('contains the connection', () => pm.expect(list.map((c) => c.connectionId)).to.include(Number(pm.collectionVariables.get('connectionId'))));",
+                  "pm.test('contains the connection', () => pm.expect(list.map((c) => c.connectionId)).to.include(Number(pm.variables.get('connectionId'))));",
                   "pm.test('no private fields', () => pm.expect(JSON.stringify(list)).not.to.match(/email|mobile|password|date_of_birth/));"
                 ]
               }
@@ -2912,6 +2948,2264 @@
                 "exec": [
                   "pm.test('status is 409', () => pm.response.to.have.status(409));",
                   "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"This connection request is no longer pending.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "13. Private chat (Phase 11)",
+      "description": "Private messaging between ACCEPTED connections. The sender/reader is always the token owner.\nBefore running, set collection variables: chatPartnerId (a user you have an ACCEPTED connection with) and chatPartnerAccessToken (that user's access token).\nReal-time delivery uses Socket.IO on the same server/port (events: conversation:join, message:send, message:received, message:delivered, message:read, typing:start/stop, presence:update). Postman collections cannot script Socket.IO; see backend/docs/phase-11-chat.md.",
+      "item": [
+        {
+          "name": "POST /messages - without token -> 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": 2,\n  \"message\": \"hi\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - empty message -> 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatPartnerId}}\",\n  \"message\": \"   \"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - unsupported type -> 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatPartnerId}}\",\n  \"message\": \"hi\",\n  \"type\": \"image\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - send to accepted connection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatPartnerId}}\",\n  \"message\": \"Hello from Postman! <b>stays plain text</b>\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const m = pm.response.json().data.message;",
+                  "pm.test('stored as plain text, status sent', () => pm.expect(m).to.include({ message: 'Hello from Postman! <b>stays plain text</b>', status: 'sent', type: 'text' }));",
+                  "pm.collectionVariables.set('chatMessageId', m.id);",
+                  "pm.collectionVariables.set('chatMyUserId', m.senderId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - to yourself -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatMyUserId}}\",\n  \"message\": \"me\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - unknown user -> 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": 999999999,\n  \"message\": \"hi\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - not connected (receiver from folder 12, request cancelled) -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{connectionReceiverId}}\",\n  \"message\": \"hi\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Messaging is available only between connected users.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /messages/:userId - history (partner)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/messages/{{chatMyUserId}}?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('contains the message, delivered by loading', () => pm.expect(d.messages.find((m) => m.id === Number(pm.variables.get('chatMessageId'))).status).to.eql('delivered'));",
+                  "pm.test('pagination', () => pm.expect(d.pagination).to.include.keys('limit', 'hasMore', 'nextCursor'));",
+                  "pm.test('public participant card only', () => pm.expect(JSON.stringify(d.participant)).not.to.match(/email|mobile|date_of_birth/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /messages/:userId - limit too large -> 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/messages/{{chatPartnerId}}?limit=1000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /messages/conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/messages/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('array with unread counts', () => pm.expect(pm.response.json().data.conversations[0]).to.include.keys('participant', 'lastMessage', 'unreadCount', 'canSend'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /messages/:id/read - by sender -> 403",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/messages/{{chatMessageId}}/read"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('message', () => pm.expect(pm.response.json().message).to.eql(\"Only the recipient can mark a message as read.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /messages/:id/read - by receiver",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/messages/{{chatMessageId}}/read"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('read', () => pm.expect(pm.response.json().data.read.messageIds).to.include(Number(pm.variables.get('chatMessageId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /messages/:id/read - unknown id -> 404",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/messages/999999999/read"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages/images - send an image (choose a JPG/PNG/WEBP file)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "receiverId",
+                  "value": "{{chatPartnerId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "caption",
+                  "value": "A photo from Postman",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick a JPG, PNG or WEBP image (max CHAT_IMAGE_MAX_SIZE_MB)"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/messages/images",
+            "description": "Multipart upload. The image is re-encoded (metadata stripped) and stored privately; the response has image.path, served only to the two participants. Select a file for the \"image\" field before sending."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const m = pm.response.json().data.message;",
+                  "pm.test('image message', () => pm.expect(m.type).to.eql('image'));",
+                  "pm.collectionVariables.set('chatImagePath', m.image.path);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET image - by the receiver",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{chatImagePath}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('webp, private cache', () => { pm.expect(pm.response.headers.get('Content-Type')).to.eql('image/webp'); pm.expect(pm.response.headers.get('Cache-Control')).to.include('private'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET image - without token -> 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{chatImagePath}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "14. Video calls (Phase 12)",
+      "description": "Call control and history over REST. WebRTC signalling (call:offer / call:answer / call:ice-candidate) is Socket.IO only — see backend/docs/phase-12-video-calls.md; `npm run e2e:video` runs a real two-browser call.\nUses chatPartnerId / chatPartnerAccessToken from folder 13 (an ACCEPTED connection).",
+      "item": [
+        {
+          "name": "GET /calls/ice-servers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/ice-servers"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ice servers, no-store', () => { pm.expect(pm.response.json().data.iceServers).to.be.an('array'); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls - without token -> 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": 2\n}"
+            },
+            "url": "{{baseUrl}}/calls"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls - yourself -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatMyUserId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/calls"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls - not connected -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{connectionReceiverId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/calls"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls - place a call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatPartnerId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/calls"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const c = pm.response.json().data.call;",
+                  "pm.test('ringing', () => pm.expect(c.status).to.eql('ringing'));",
+                  "pm.collectionVariables.set('callId', c.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls - while in a call -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatPartnerId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/calls"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls/:id/accept - by the caller -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/{{callId}}/accept"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /calls/:id - by the receiver",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/{{callId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('incoming', () => pm.expect(pm.response.json().data.call.direction).to.eql('incoming'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls/:id/reject - by the receiver",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/{{callId}}/reject"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('rejected', () => pm.expect(pm.response.json().data.call.status).to.eql('rejected'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls/:id/accept - after reject -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/{{callId}}/accept"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls/:id/end - already ended -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/{{callId}}/end"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /calls/history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/history?limit=10"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('contains the call, metadata only', () => { const h = pm.response.json().data; pm.expect(h.calls.map((c) => c.id)).to.include(Number(pm.variables.get('callId'))); pm.expect(JSON.stringify(h)).not.to.match(/sdp|candidate|credential/i); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /calls/999999999 -> 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/calls/999999999"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "15. Privacy settings & reports (Phase 13)",
+      "description": "Own privacy settings (enforced server-side wherever profile data is returned), another member's privacy-filtered profile, and user reports. Uses chatPartnerId / chatPartnerAccessToken from folder 13.",
+      "item": [
+        {
+          "name": "GET /privacy/settings - defaults",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/privacy/settings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('defaults', () => pm.expect(pm.response.json().data.settings).to.include({ profileVisibility: 'everyone', onlineStatusVisibility: 'connections' }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /privacy/settings - userId in body -> 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{chatPartnerId}}\",\n  \"locationVisibility\": \"nobody\"\n}"
+            },
+            "url": "{{baseUrl}}/privacy/settings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /privacy/settings - invalid level -> 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locationVisibility\": \"friends\"\n}"
+            },
+            "url": "{{baseUrl}}/privacy/settings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /privacy/settings - hide location",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locationVisibility\": \"nobody\",\n  \"educationVisibility\": \"connections\"\n}"
+            },
+            "url": "{{baseUrl}}/privacy/settings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('saved', () => pm.expect(pm.response.json().data.settings.locationVisibility).to.eql('nobody'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /profile/:userId - partner sees my filtered profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile/{{chatMyUserId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json().data;",
+                  "pm.test('location hidden, no account data', () => { pm.expect(p.location).to.eql(null); pm.expect(p.hiddenFields).to.include('location'); pm.expect(JSON.stringify(p)).not.to.match(/email|mobile|password|dateOfBirth/i); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /privacy/settings - restore location",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locationVisibility\": \"everyone\",\n  \"educationVisibility\": \"everyone\"\n}"
+            },
+            "url": "{{baseUrl}}/privacy/settings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /reports/reasons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/reports/reasons"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('categories', () => pm.expect(pm.response.json().data.reasons.map((r) => r.value)).to.include('harassment'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /reports - without token -> 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportedUserId\": 2,\n  \"reason\": \"spam\"\n}"
+            },
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /reports - yourself -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportedUserId\": \"{{chatMyUserId}}\",\n  \"reason\": \"spam\"\n}"
+            },
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /reports - invalid reason -> 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportedUserId\": \"{{chatPartnerId}}\",\n  \"reason\": \"rude\"\n}"
+            },
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /reports - status in body -> 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportedUserId\": \"{{chatPartnerId}}\",\n  \"reason\": \"spam\",\n  \"status\": \"resolved\"\n}"
+            },
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /reports - file a report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportedUserId\": \"{{chatPartnerId}}\",\n  \"reason\": \"SPAM\",\n  \"description\": \"Postman test report.\"\n}"
+            },
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const r = pm.response.json().data.report;",
+                  "pm.test('no moderation details', () => { pm.expect(r.state).to.eql('open'); pm.expect(r).to.not.have.any.keys('status', 'reviewedBy', 'resolutionNote'); });",
+                  "pm.collectionVariables.set('reportId', r.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /reports - same open report again -> 200 (no duplicate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportedUserId\": \"{{chatPartnerId}}\",\n  \"reason\": \"spam\"\n}"
+            },
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('same report', () => pm.expect(pm.response.json().data.report.id).to.eql(Number(pm.variables.get('reportId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /reports - own reports only",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('contains it', () => pm.expect(pm.response.json().data.reports.map((r) => r.id)).to.include(Number(pm.variables.get('reportId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /reports - the reported user sees none of them",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('not visible', () => pm.expect(pm.response.json().data.reports.map((r) => r.id)).to.not.include(Number(pm.variables.get('reportId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /admin/reports/:id - normal user -> 403",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/reports/{{reportId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "16. Blocking (Phase 13)",
+      "description": "Block / unblock. A block works in both directions and ENDS the connection (accepted → disconnected), closes chats and ends calls. Unblocking restores nothing. Runs last: it disconnects the folder-13 pair.",
+      "item": [
+        {
+          "name": "POST /blocks - self -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{chatMyUserId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/blocks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /blocks - block",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blockedUserId\": \"{{chatPartnerId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/blocks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /blocks - again (idempotent) -> 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{chatPartnerId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/blocks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /blocks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/blocks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('lists the user', () => pm.expect(pm.response.json().data.blocks.map((b) => b.userId)).to.include(Number(pm.variables.get('chatPartnerId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - blocked -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatMyUserId}}\",\n  \"message\": \"hi\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('neutral message', () => pm.expect(pm.response.json().message).to.eql('You cannot message this user.'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /calls - blocked -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatMyUserId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/calls"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /profile/:userId - blocked -> 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile/{{chatMyUserId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /blocks/:userId - unblock",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/blocks/{{chatPartnerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /blocks/:userId - not blocked -> 404",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/blocks/{{chatPartnerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /messages - after unblock still not connected -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{chatMyUserId}}\",\n  \"message\": \"hi\"\n}"
+            },
+            "url": "{{baseUrl}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('connection was ended by the block', () => pm.expect(pm.response.json().message).to.eql('Messaging is available only between connected users.'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "17. Admin panel (Phase 14)",
+      "description": "Admin API. Needs adminAccessToken / adminUserId: register an account, promote it (npm run admin:promote -- <email>),\nthen sign in via POST /admin/login + POST /auth/login-verification/complete. Every route requires role=admin\n(ordinary users get 403). Uses chatPartnerId and reportId from earlier folders. Never paste real tokens into a shared collection.",
+      "item": [
+        {
+          "name": "GET /admin/dashboard - without token -> 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/dashboard - ordinary user -> 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('real counts', () => { const d = pm.response.json().data; pm.expect(d.users.total).to.be.a('number'); pm.expect(d.messages).to.have.keys('total', 'inPeriod'); });",
+                  "pm.test('no secrets', () => pm.expect(pm.response.text()).not.to.match(/password|otp_|token|hash/i));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/dashboard - invalid date -> 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/dashboard?from=2026-13-01"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/activity - last 7 days",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/activity"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('series', () => pm.expect(pm.response.json().data.series).to.include.keys('registrations', 'messages'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/monitoring",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/monitoring"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('db reachable', () => pm.expect(pm.response.json().data.database.reachable).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/ml",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/ml"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('honest status', () => pm.expect(pm.response.json().data.status).to.be.oneOf(['trained', 'not_trained', 'no_active_model', 'insufficient_data']));",
+                  "pm.test('no weights', () => pm.expect(pm.response.text()).not.to.match(/weights/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/users - search",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users?search={{chatPartnerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('found', () => pm.expect(pm.response.json().data.users.map((u) => u.userId)).to.include(Number(pm.variables.get('chatPartnerId'))));",
+                  "pm.test('no secrets', () => pm.expect(pm.response.text()).not.to.match(/password|otp_|token|hash/i));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/users - invalid limit -> 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users?limit=1000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users/{{chatPartnerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('no secrets', () => pm.expect(pm.response.text()).not.to.match(/password|otp_|token|hash/i));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/users/:id/status - own account -> 400",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"suspended\",\n  \"reason\": \"test\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{adminUserId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/users/:id/status - suspend without reason -> 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"suspended\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{chatPartnerId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/users/:id/status - suspend",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"suspended\",\n  \"reason\": \"Postman moderation test\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{chatPartnerId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('suspended', () => pm.expect(pm.response.json().data.user.status).to.eql('suspended'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Suspended user is signed out -> 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chatPartnerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/users/:id/status - suspend again -> 409",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"suspended\",\n  \"reason\": \"again\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{chatPartnerId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/users/:id/status - reactivate",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{chatPartnerId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/reports - pending",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/reports?status=pending&sort=newest"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('paginated', () => pm.expect(pm.response.json().data.pagination).to.include.keys('page', 'total'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/reports/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/reports/{{reportId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has history', () => pm.expect(pm.response.json().data.report.history).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/reports/:id/status - ordinary user -> 403",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/reports/{{reportId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/reports/:id/status - under review",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"under_review\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/reports/{{reportId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/reports/:id/status - resolve",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"actionTaken\": \"warning\",\n  \"resolutionNote\": \"Postman test: user warned.\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/reports/{{reportId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('resolved', () => pm.expect(pm.response.json().data.report.status).to.eql('resolved'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/reports/:id/status - closed report -> 409",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"dismissed\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/reports/{{reportId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/audit-logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/audit-logs?limit=10"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('actions recorded', () => pm.expect(pm.response.json().data.entries.map((e) => e.action)).to.include.members(['user_suspended', 'user_reactivated', 'report_status_changed']));",
+                  "pm.test('no secrets', () => pm.expect(pm.response.text()).not.to.match(/password|otp_|token|hash/i));"
                 ]
               }
             }

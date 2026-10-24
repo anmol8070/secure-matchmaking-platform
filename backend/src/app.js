@@ -25,20 +25,11 @@ function createApp({ corsOrigins } = {}) {
   app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
   app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 
-  // Uploaded media for the local storage provider (random, unguessable file
-  // names; never overwritten, so they can be cached for a long time).
+  // Secure access-controlled media delivery for local storage provider.
+  // Enforces authorization, privacy settings, signed URLs, and path traversal defense.
   if (config.media.storageProvider === 'local') {
-    app.use(
-      '/media',
-      express.static(config.media.uploadsDir, {
-        index: false,
-        dotfiles: 'deny',
-        redirect: false,
-        immutable: true,
-        maxAge: '30d',
-        setHeaders: (res) => res.set('Cross-Origin-Resource-Policy', 'cross-origin'),
-      })
-    );
+    const { getProfilePhoto } = require('./routes/mediaRoutes');
+    app.get('/media/profile-photos/:filename', getProfilePhoto);
   }
 
   app.use(API_PREFIX, apiRoutes);

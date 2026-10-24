@@ -12,6 +12,7 @@ const Profile = require('../models/profileModel');
 const ApiError = require('../utils/ApiError');
 const { ageFromDateOfBirth } = require('../utils/age');
 const { toPublicUrl } = require('./storage');
+const privacyService = require('./privacyService');
 const profilePhotoService = require('./profilePhotoService');
 
 const MESSAGES = Object.freeze({
@@ -145,8 +146,22 @@ async function removeProfilePhoto(userId) {
   return getOwnProfile(userId);
 }
 
+/**
+ * Another member's profile as `viewerId` may see it (Phase 13): filtered by
+ * the owner's privacy settings in privacyService. Blocked pairs and missing
+ * or inactive accounts get the same 404, so existence is not revealed.
+ */
+async function getProfileForViewer(viewerId, targetUserId) {
+  if (Number(viewerId) === Number(targetUserId)) return getOwnProfile(viewerId);
+  const profile = await Profile.getActiveProfileById(targetUserId);
+  const visible = profile && (await privacyService.visibleProfile(viewerId, targetUserId, profile));
+  if (!visible) throw ApiError.notFound('Profile not found.');
+  return visible;
+}
+
 module.exports = {
   getOwnProfile,
+  getProfileForViewer,
   createProfile,
   updateProfile,
   uploadProfilePhoto,

@@ -10,6 +10,8 @@
  */
 process.env.NODE_ENV = 'test';
 
+const fs = require('fs');
+const path = require('path');
 const knex = require('knex');
 const config = require('../../src/config/environment');
 const { buildKnexConfig } = require('../../src/config/database');
@@ -34,6 +36,12 @@ const APP_TABLES = [
   // Phase 4
   'otp_codes',
   'user_sessions',
+  // Phase 12
+  'video_calls',
+  // Phase 13
+  'privacy_settings',
+  // Phase 14
+  'admin_audit_logs',
 ];
 
 // Violation kinds -> PostgreSQL SQLSTATE codes and MySQL/MariaDB error numbers.
@@ -201,6 +209,7 @@ describe('schema structure', () => {
   it('defines every foreign key with the documented delete rule', async () => {
     expect(await foreignKeys()).toEqual(
       [
+        'admin_audit_logs.admin_id -> users.user_id SET NULL',
         'activity_feedback.connection_request_id -> connection_requests.request_id SET NULL',
         'activity_feedback.target_user_id -> users.user_id RESTRICT',
         'activity_feedback.user_id -> users.user_id RESTRICT',
@@ -217,6 +226,7 @@ describe('schema structure', () => {
         'messages.receiver_id -> users.user_id RESTRICT',
         'messages.sender_id -> users.user_id RESTRICT',
         'preferences.user_id -> users.user_id CASCADE',
+        'privacy_settings.user_id -> users.user_id CASCADE',
         'profiles.user_id -> users.user_id CASCADE',
         'quiz_answers.user_id -> users.user_id CASCADE',
         'reports.reported_id -> users.user_id RESTRICT',
@@ -224,6 +234,9 @@ describe('schema structure', () => {
         'reports.reviewed_by -> users.user_id SET NULL',
         'user_hobbies.hobby_id -> hobbies.hobby_id RESTRICT',
         'user_hobbies.user_id -> users.user_id CASCADE',
+        'video_calls.caller_id -> users.user_id RESTRICT',
+        'video_calls.ended_by -> users.user_id SET NULL',
+        'video_calls.receiver_id -> users.user_id RESTRICT',
       ].sort()
     );
   });
@@ -512,7 +525,7 @@ describe('reports', () => {
     const admin = await createUser({ role: 'admin' });
     const id = await insertReturningId(
       'reports',
-      { reporter_id: reporter, reported_id: reported, reason: 'Spam' },
+      { reporter_id: reporter, reported_id: reported, reason: 'spam' },
       'report_id'
     );
     await db('reports')
@@ -520,7 +533,7 @@ describe('reports', () => {
       .update({ status: 'resolved', reviewed_by: admin, reviewed_at: new Date() });
 
     await expectViolation(
-      db('reports').insert({ reporter_id: reporter, reported_id: reporter, reason: 'x' }),
+      db('reports').insert({ reporter_id: reporter, reported_id: reporter, reason: 'spam' }),
       'check'
     );
 
@@ -617,7 +630,7 @@ describe('delete policy', () => {
     ['messages', (a, b) => ({ sender_id: a, receiver_id: b, message: 'hi' })],
     ['connection_requests', (a, b) => ({ sender_id: a, receiver_id: b })],
     ['matches', (a, b) => ({ user1_id: a, user2_id: b, score: 50 })],
-    ['reports', (a, b) => ({ reporter_id: a, reported_id: b, reason: 'x' })],
+    ['reports', (a, b) => ({ reporter_id: a, reported_id: b, reason: 'spam' })],
     ['blocks', (a, b) => ({ blocker_id: a, blocked_id: b })],
     ['activity_feedback', (a, b) => ({ user_id: a, target_user_id: b, action: 'interest' })],
   ])('blocks hard-deleting a user referenced by %s', async (table, makeRow) => {
@@ -637,7 +650,9 @@ describe('migrations', () => {
     }
 
     const [, applied] = await db.migrate.latest();
-    expect(applied).toHaveLength(20);
+    const migrationFiles = fs.readdirSync(path.join(__dirname, '../../src/db/migrations')).filter((name) => name.endsWith('.js'));
+    expect(applied).toHaveLength(migrationFiles.length);
+    expect(applied).toEqual(expect.arrayContaining(migrationFiles));
     for (const table of APP_TABLES) {
       expect(await db.schema.hasTable(table)).toBe(true);
     }

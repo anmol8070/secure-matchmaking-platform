@@ -103,11 +103,13 @@ A breaking change will add `/api/v2` as a new router mounted beside v1, so exist
 | `/matches` | `GET /`, `GET /:userId` |
 | `/recommendations` | `GET /` |
 | `/connections` | `GET /`, `POST /`, `GET /requests/received`, `GET /requests/sent`, `GET /status/:userId`, `GET /:id`, `PUT /:id`, `DELETE /:id` — implemented in Phase 10 ([phase-10-connections.md](phase-10-connections.md)) |
-| `/messages` | `GET /conversations`, `GET /:userId`, `POST /:userId`, `PATCH /:userId/read` |
-| `/reports` | `POST /`, `GET /` |
-| `/blocks` | `GET /`, `POST /`, `DELETE /:userId` |
+| `/calls` | `GET /ice-servers`, `GET /history`, `POST /`, `GET /:id`, `POST /:id/accept`, `POST /:id/reject`, `POST /:id/end` — Phase 12, plus `call:*` Socket.IO signalling ([phase-12-video-calls.md](phase-12-video-calls.md)) |
+| `/messages` | `GET /conversations`, `GET /:userId`, `POST /`, `POST /images`, `GET /:id/image`, `PUT /:id/read` — implemented in Phase 11, plus Socket.IO events on the same server ([phase-11-chat.md](phase-11-chat.md)) |
+| `/reports` | `GET /reasons`, `POST /`, `GET /` (own reports) — Phase 13; review is `/admin/reports` (Phase 14) |
+| `/blocks` | `GET /`, `POST /` `{ blockedUserId }`, `DELETE /:userId` — a block ends the connection, chats and calls ([phase-13-privacy-safety.md](phase-13-privacy-safety.md)) |
+| `/privacy` | `GET /settings`, `PUT /settings` — Phase 13 |
 | `/feedback` | `POST /`, `GET /` |
-| `/admin` | ✅ `POST /login` (public, admins only); admin role required for: `GET /dashboard`, `GET /users`, `GET /users/:userId`, `PATCH /users/:userId/status`, `GET /reports`, `PATCH /reports/:reportId`, `GET /activity`, `GET /monitoring` |
+| `/admin` | `POST /login`; admin role required for: `GET /dashboard`, `GET /activity`, `GET /monitoring`, `GET /ml`, `POST /ml/train`, `GET /users`, `GET /users/:id`, `PUT /users/:id/status`, `GET /reports`, `GET /reports/:id`, `PUT /reports/:id/status`, `GET /audit-logs` — Phase 14 ([phase-14-admin.md](phase-14-admin.md)) |
 
 Every module except `/health`, `/auth` and `/admin/login` requires a valid access token (`requireAuth`, applied in `routes.js`); `/admin/*` additionally requires `role = admin`. Planned endpoints of authorised requests return **HTTP 501**:
 
@@ -183,7 +185,7 @@ Route-level middleware (Phase 4):
 | --- | --- | --- |
 | `requireAuth` | `middleware/authMiddleware.js` | Bearer JWT → checks signature, expiry, server-side session (not revoked) and active account; sets `req.user`, `req.auth` |
 | `requireRole(...roles)` | `middleware/roleMiddleware.js` | Role-based authorization (`403` for the wrong role) |
-| `authLimiter` | `middleware/rateLimiter.js` | All `/auth` requests per IP |
+| `authLimiter` | `middleware/rateLimiter.js` | `/auth` credential/OTP requests per IP (not `/me`, `/logout`) |
 | `failedAttemptLimiter` | `middleware/rateLimiter.js` | Failed password/OTP/verification checks per IP + account (no account lockout) |
 | `uploadProfileImage` | `middleware/uploadMiddleware.js` | multer (memory) for `PUT /profile/photo`: one file, field `photo`, size limit → 413 (Phase 5) |
 

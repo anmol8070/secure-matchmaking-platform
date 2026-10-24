@@ -37,7 +37,7 @@ function Login() {
     event.preventDefault();
     setError('');
     try {
-      await loginWithPassword(identifier.trim(), password);
+      await loginWithPassword(identifier.trim(), password, { returnTo: state?.from });
       goToVerification();
     } catch (err) {
       setError(err.message);
@@ -59,7 +59,7 @@ function Login() {
     event.preventDefault();
     setError('');
     try {
-      await loginWithOtp(identifier.trim(), otp);
+      await loginWithOtp(identifier.trim(), otp, { returnTo: state?.from });
       goToVerification();
     } catch (err) {
       setError(err.message);

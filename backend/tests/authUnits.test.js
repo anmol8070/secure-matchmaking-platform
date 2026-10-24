@@ -6,7 +6,7 @@ const request = require('supertest');
 const { hashPassword, verifyPassword } = require('../src/utils/password');
 const { generateOtp, generateToken, sha256, hmacSha256, safeEqualHex } = require('../src/utils/securityTokens');
 const { normalizeMobile, parseIdentifier, maskContact } = require('../src/utils/contact');
-const { evaluateDetection } = require('../src/services/verificationService');
+const { evaluateDetection, applyProfileRule } = require('../src/services/verificationService');
 const { createLimiter, accountKey } = require('../src/middleware/rateLimiter');
 const errorHandler = require('../src/middleware/errorHandler');
 

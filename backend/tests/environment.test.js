@@ -117,4 +117,23 @@ describe('environment configuration', () => {
     const dev = loadConfig({ NODE_ENV: 'development', CORS_ORIGIN: '*' });
     expect(dev.validateEnvironment()).toEqual([]);
   });
+
+  it('blocks production startup when SMTP or TURN is missing for the selected provider', () => {
+    const config = loadConfig({
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://app.example.com',
+      DATABASE_URL: 'postgres://u:p@db:5432/app',
+      JWT_SECRET: 'j'.repeat(40),
+      OTP_SECRET: 'o'.repeat(40),
+      OTP_PROVIDER: 'production',
+      MEDIA_PUBLIC_BASE_URL: 'https://api.example.com',
+      WEBRTC_TURN_URL: '',
+    });
+    const issues = config.validateProductionReadiness();
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.stringMatching(/SMTP/),
+      expect.stringMatching(/Twilio/),
+      expect.stringMatching(/WEBRTC_TURN_URL/),
+    ]));
+  });
 });

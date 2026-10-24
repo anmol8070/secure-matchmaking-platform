@@ -2,6 +2,13 @@ const db = require('../config/database').getDb();
 const ApiError = require('../utils/ApiError');
 
 class MlModel {
+  // Same metadata as BaseModel-based models (checked by the model/schema tests).
+  static table = 'ml_model_versions';
+
+  static primaryKey = 'id';
+
+  static jsonColumns = ['weights'];
+
   /**
    * Insert a new trained ML model version.
    */

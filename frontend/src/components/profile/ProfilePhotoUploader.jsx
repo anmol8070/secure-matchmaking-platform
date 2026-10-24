@@ -8,12 +8,14 @@
  * mode="immediate": uploads/removes right away and calls onChange(profile).
  * mode="deferred":  only reports the chosen file via onFileChange(file|null)
  *                   (used while creating a profile; uploaded after it is saved).
+ * initialFile:      a photo already captured, such as the sign-in picture.
  */
 import { useEffect, useRef, useState } from 'react';
 import Alert from '../common/Alert.jsx';
 import Avatar from './Avatar.jsx';
 import useCamera from '../../hooks/useCamera.js';
 import { profileService } from '../../services/profileService.js';
+import { useToast } from '../common/Toast.jsx';
 import { PROFILE_IMAGE_MAX_MB, PROFILE_IMAGE_TYPES, validateProfileImage } from '../../utils/profileImage.js';
 
 const CAMERA_MESSAGES = {
@@ -22,7 +24,7 @@ const CAMERA_MESSAGES = {
   no_camera: 'No camera was found. Choose a picture from your gallery or files instead.',
 };
 
-function ProfilePhotoUploader({ photoUrl, name, mode = 'immediate', onChange, onFileChange }) {
+function ProfilePhotoUploader({ photoUrl, name, mode = 'immediate', onChange, onFileChange, initialFile = null }) {
   const fileInputRef = useRef(null);
   const captureInputRef = useRef(null);
   const canvasRef = useRef(null);
@@ -34,6 +36,7 @@ function ProfilePhotoUploader({ photoUrl, name, mode = 'immediate', onChange, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const notify = useToast();
 
   // Release the preview's object URL when it changes or on unmount.
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
@@ -50,6 +53,12 @@ function ProfilePhotoUploader({ photoUrl, name, mode = 'immediate', onChange, on
     setPreviewUrl(URL.createObjectURL(selected));
     if (mode === 'deferred') onFileChange?.(selected);
   };
+
+  useEffect(() => {
+    if (initialFile) selectFile(initialFile);
+    // The captured sign-in photo is applied once, when the uploader opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearSelection = () => {
     setFile(null);
@@ -103,7 +112,7 @@ function ProfilePhotoUploader({ photoUrl, name, mode = 'immediate', onChange, on
     try {
       const { data } = await profileService.uploadPhoto(file);
       clearSelection();
-      setInfo('Profile picture updated.');
+      notify('Profile picture updated.');
       onChange?.(data);
     } catch (err) {
       setError(err.message);
@@ -117,7 +126,7 @@ function ProfilePhotoUploader({ photoUrl, name, mode = 'immediate', onChange, on
     setError('');
     try {
       const { data } = await profileService.removePhoto();
-      setInfo('Profile picture removed.');
+      notify('Profile picture removed.');
       onChange?.(data);
     } catch (err) {
       setError(err.message);
@@ -185,15 +194,16 @@ function ProfilePhotoUploader({ photoUrl, name, mode = 'immediate', onChange, on
           </div>
         )}
 
-        <input ref={fileInputRef} type="file" accept={accept} hidden onChange={onPicked} data-testid="photo-file-input" />
+        <input ref={fileInputRef} className="photo-uploader__file" type="file" accept={accept} onChange={onPicked} data-testid="photo-file-input" aria-label="Choose a profile picture" />
         <input
           ref={captureInputRef}
+          className="photo-uploader__file"
           type="file"
           accept={accept}
           capture="user"
-          hidden
           onChange={onPicked}
           data-testid="photo-capture-input"
+          aria-label="Take a profile picture"
         />
         <canvas ref={canvasRef} hidden />
       </div>

@@ -365,11 +365,17 @@ Private one-to-one messages. The specification's `timestamp` field is named `sen
 | receiver_id | bigint | no | | **FK** → users (RESTRICT) |
 | message | text | no | | Must not be empty |
 | sent_at | timestamp | no | now | |
-| read_at | timestamp | yes | | For unread counts |
+| read_at | timestamp | yes | | For unread counts; set by read receipts |
+| message_type | varchar(20) | no | `text` | Phase 11; CHECK `chk_messages_type` (`text`) |
+| delivered_at | timestamp | yes | | Phase 11; a receiver device got the message |
+| attachment_key / attachment_content_type / attachment_width / attachment_height / attachment_size | varchar / varchar / int / int / int | yes | | Phase 11 image messages; the file is in private storage, the key is never returned |
 
 Constraints:
 - `chk_messages_not_self`.
-- `chk_messages_not_empty`.
+- `chk_messages_content` (Phase 11, replaces `chk_messages_not_empty`): text needs text, image needs an attachment.
+- `chk_messages_type` (Phase 11): `text` | `image`.
+
+Phase 11 adds `idx_messages_pair_id (sender_id, receiver_id, message_id)` for id-cursor history pages. The conversation id is the pair's `connection_requests.request_id` (see [phase-11-chat.md](phase-11-chat.md)).
 
 ### 4.10 reports
 
@@ -380,13 +386,16 @@ User reports, reviewed in the Admin Panel.
 | report_id | bigint | no | auto | **PK** |
 | reporter_id | bigint | no | | **FK** → users (RESTRICT) |
 | reported_id | bigint | no | | **FK** → users (RESTRICT) |
-| reason | text | no | | Must not be empty |
+| reason | varchar(30) | no | | Phase 13: category code `harassment` \| `spam` \| `fake_profile` \| `inappropriate_content` \| `threatening` \| `other` (CHECK) |
+| description | text | yes | | Phase 13: optional details (≤ 2000) |
 | status | varchar(20) | no | `pending` | `pending` \| `under_review` \| `resolved` \| `dismissed` |
+| resolution_note | text | yes | | Phase 13: moderator note |
+| action_taken | varchar(30) | yes | | Phase 13: `none` \| `warning` \| `content_removed` \| `suspended` \| `banned` |
 | reviewed_by | bigint | yes | | **FK** → users (SET NULL); the admin who handled the report |
 | reviewed_at | timestamp | yes | | |
 | created_at / updated_at | timestamp | no | now | |
 
-Constraint `chk_reports_not_self`: a user cannot report themselves.
+Constraint `chk_reports_not_self`: a user cannot report themselves. Phase 13 adds `chk_reports_reason`, `chk_reports_action_taken`, `chk_reports_description_length` and `idx_reports_duplicate (reporter_id, reported_id, reason, status)`; old free-text reasons were moved to `description`.
 
 ### 4.11 blocks
 
@@ -474,6 +483,32 @@ One row per issued access token, so logout and suspension take effect immediatel
 | created_at | timestamp | no | |
 
 Index `idx_user_sessions_user_created (user_id, created_at)`.
+
+### 4.18 admin_audit_logs (Phase 14)
+
+Append-only record of sensitive admin actions: `audit_id` PK, `admin_id` FK → users (SET NULL), `action` (CHECK `user_suspended` | `user_reactivated` | `report_status_changed` | `ml_training_run`), `target_type` (`user` | `report` | `ml_model`), `target_id`, `reason` (≤ 500), `metadata` JSON, `created_at`. Indexes on `created_at`, `(target_type, target_id, created_at)` and `(admin_id, created_at)`. No passwords, OTPs, tokens or message text are ever stored. Phase 14 also adds aggregate indexes: `users (status, created_at)`, `users (created_at)`, `messages (sent_at)`, `connection_requests (created_at)`, `connection_requests (status, responded_at)`, `video_calls (created_at)`, `reports (reviewed_at)`. See [phase-14-admin.md](phase-14-admin.md).
+
+### 4.17 privacy_settings (Phase 13)
+
+One row per user (`user_id` PK, FK → users CASCADE); a missing row means the defaults. Columns: `profile_visibility` (`everyone` | `connections`, default `everyone`) and `photo_`, `age_`, `location_`, `education_`, `occupation_`, `lifestyle_`, `bio_`, `hobbies_visibility` (`everyone` | `connections` | `nobody`, default `everyone`), `online_status_visibility` (default `connections`), `created_at` / `updated_at`. Each has a CHECK. See [phase-13-privacy-safety.md](phase-13-privacy-safety.md).
+
+### 4.16 video_calls (Phase 12)
+
+Metadata of private video calls. No media, SDP or ICE data is stored. See [phase-12-video-calls.md](phase-12-video-calls.md).
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| call_id | bigint | no | auto | **PK** |
+| caller_id | bigint | no | | **FK** → users (RESTRICT) |
+| receiver_id | bigint | no | | **FK** → users (RESTRICT) |
+| status | varchar(20) | no | `ringing` | `ringing` \| `accepted` \| `connected` \| `rejected` \| `missed` \| `cancelled` \| `busy` \| `ended` \| `failed` |
+| answered_at / connected_at / ended_at | timestamp | yes | | Lifecycle |
+| duration_seconds | int | yes | | Connected time |
+| end_reason | varchar(30) | yes | | e.g. `hangup`, `no_answer`, `participant_left` |
+| ended_by | bigint | yes | | **FK** → users (SET NULL) |
+| created_at / updated_at | timestamp | no | now | created_at = when the call was placed |
+
+Constraints: `chk_video_calls_status`, `chk_video_calls_not_self`. Indexes: `idx_video_calls_caller (caller_id, call_id)`, `idx_video_calls_receiver (receiver_id, call_id)`, `idx_video_calls_status (status, created_at)`.
 
 ## 5. Primary keys
 

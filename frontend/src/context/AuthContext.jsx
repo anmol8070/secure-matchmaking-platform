@@ -6,20 +6,29 @@ import { createContext, useCallback, useEffect, useMemo, useReducer } from 'reac
 import { authService } from '../services/authService.js';
 import { onUnauthorized } from '../services/apiClient.js';
 import { isTokenExpired, tokenStore } from '../services/tokenStore.js';
+import { socketService } from '../services/socketService.js';
 import { AUTH_STATUS, authReducer, initialAuthState } from './authReducer.js';
 
 export const AuthContext = createContext(null);
 
-const toVerification = (data, context) => ({
+// Restoring a stored session: attempts and backoff for temporary failures.
+const RESTORE_ATTEMPTS = 3;
+const RESTORE_RETRY_MS = 1000;
+
+// returnTo: the protected page the visitor asked for (checked by landingPath before use).
+const toVerification = (data, context, returnTo) => ({
   token: data.verification_token,
   expiresAt: Date.now() + data.verification_expires_in * 1000,
   context,
+  returnTo: returnTo || null,
+  hasProfilePhoto: Boolean(data.has_profile_photo),
 });
 
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialAuthState);
 
   const expireSession = useCallback(() => {
+    socketService.disconnect();
     tokenStore.clear();
     dispatch({ type: 'SESSION_EXPIRED' });
   }, []);
@@ -36,12 +45,24 @@ export function AuthProvider({ children }) {
       return undefined;
     }
     let cancelled = false;
-    authService
-      .me()
-      .then(({ data }) => !cancelled && dispatch({ type: 'AUTHENTICATED', user: data }))
-      .catch(() => !cancelled && expireSession());
+    let timer = null;
+    // Only a 401/403 means the session is over. A temporary failure (offline,
+    // rate limit, server error) is retried a few times before giving up, so a
+    // network blip does not sign the user out.
+    const restore = (attempt) =>
+      authService
+        .me()
+        .then(({ data }) => !cancelled && dispatch({ type: 'AUTHENTICATED', user: data }))
+        .catch((err) => {
+          if (cancelled) return;
+          const sessionOver = err?.status === 401 || err?.status === 403;
+          if (sessionOver || attempt >= RESTORE_ATTEMPTS) expireSession();
+          else timer = setTimeout(() => restore(attempt + 1), RESTORE_RETRY_MS * attempt);
+        });
+    restore(1);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [expireSession]);
 
@@ -49,11 +70,11 @@ export function AuthProvider({ children }) {
   useEffect(() => onUnauthorized(expireSession), [expireSession]);
 
   /** Runs a step-1 login call; on success the app moves to live verification. */
-  const runLoginStep = useCallback(async (call, context) => {
+  const runLoginStep = useCallback(async (call, context, returnTo) => {
     dispatch({ type: 'AUTH_START' });
     try {
       const { data } = await call();
-      dispatch({ type: 'CREDENTIALS_VERIFIED', verification: toVerification(data, context) });
+      dispatch({ type: 'CREDENTIALS_VERIFIED', verification: toVerification(data, context, returnTo) });
     } catch (err) {
       dispatch({ type: 'AUTH_FAILED' });
       throw err;
@@ -61,16 +82,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   const loginWithPassword = useCallback(
-    (identifier, password, { admin = false } = {}) =>
+    (identifier, password, { admin = false, returnTo } = {}) =>
       runLoginStep(
         () => (admin ? authService.adminLogin(identifier, password) : authService.login(identifier, password)),
-        admin ? 'admin' : 'user'
+        admin ? 'admin' : 'user',
+        returnTo
       ),
     [runLoginStep]
   );
 
   const loginWithOtp = useCallback(
-    (identifier, otp) => runLoginStep(() => authService.verifyLoginOtp(identifier, otp), 'user'),
+    (identifier, otp, { returnTo } = {}) => runLoginStep(() => authService.verifyLoginOtp(identifier, otp), 'user', returnTo),
     [runLoginStep]
   );
 
@@ -109,6 +131,7 @@ export function AuthProvider({ children }) {
     } catch {
       // Even if the server call fails, the local session ends.
     }
+    socketService.disconnect();
     tokenStore.clear();
     dispatch({ type: 'LOGGED_OUT' });
   }, []);

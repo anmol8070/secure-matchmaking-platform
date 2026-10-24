@@ -21,7 +21,16 @@ describe('authReducer', () => {
     expect(state.status).toBe(AUTH_STATUS.LIVE_VERIFICATION_PENDING);
 
     state = authReducer(state, { type: 'AUTHENTICATED', user: { user_id: 1 } });
-    expect(state).toEqual({ status: AUTH_STATUS.AUTHENTICATED, user: { user_id: 1 }, verification: null, notice: null });
+    expect(state).toEqual({ status: AUTH_STATUS.AUTHENTICATED, user: { user_id: 1 }, verification: null, notice: null, returnTo: null });
+  });
+
+  it('keeps the page requested before sign-in through the verification step', () => {
+    let state = authReducer(loggedOut, { type: 'CREDENTIALS_VERIFIED', verification: { ...verification, returnTo: '/chat/9' } });
+    state = authReducer(state, { type: 'LIVE_VERIFICATION_STARTED' });
+    state = authReducer(state, { type: 'AUTHENTICATED', user: { user_id: 1 } });
+    expect(state.returnTo).toBe('/chat/9');
+    // A restored session (no verification step) has no return path.
+    expect(authReducer(loggedOut, { type: 'AUTHENTICATED', user: { user_id: 1 } }).returnTo).toBeNull();
   });
 
   it('cannot enter live verification without verified credentials', () => {

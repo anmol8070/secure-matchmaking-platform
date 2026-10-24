@@ -19,6 +19,7 @@ const { createDatabase } = require('../../scripts/db-create');
 const { createApp } = require('../../src/app');
 const devOutbox = require('../../src/services/otpDelivery/devOtpProvider');
 const verificationService = require('../../src/services/verificationService');
+const { signProfilePhotoUrl } = require('../../src/services/storage/photoSignature');
 
 const app = createApp({ corsOrigins: [] });
 const PASSWORD = 'Secure123';
@@ -291,8 +292,11 @@ describe('update', () => {
     expect((await as(bob.token).get('/profile')).body.data).toMatchObject({ userId: bob.userId, name: 'Bob' });
     expect((await as(alice.token).get('/profile')).body.data).toMatchObject({ userId: alice.userId, name: 'Alice Updated' });
 
-    // Viewing other members comes in a later phase.
-    expect((await as(alice.token).get(`/profile/${bob.userId}`)).status).toBe(501);
+    // Viewing another member (Phase 13) is read-only and privacy-filtered: no account data.
+    const view = await as(alice.token).get(`/profile/${bob.userId}`);
+    expect(view.status).toBe(200);
+    expect(view.body.data).toMatchObject({ userId: bob.userId, name: 'Bob', restricted: false });
+    expect(JSON.stringify(view.body)).not.toMatch(/email|mobile|dateOfBirth|date_of_birth|password/i);
   });
 });
 
@@ -311,7 +315,7 @@ describe('profile picture', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.message).toBe('Profile picture updated successfully');
-    expect(res.body.data.profilePhotoUrl).toMatch(/^http:\/\/localhost:\d+\/media\/profile-photos\/[0-9a-f-]{36}\.webp$/);
+    expect(res.body.data.profilePhotoUrl).toMatch(/^http:\/\/localhost:\d+\/media\/profile-photos\/[0-9a-f-]{36}\.webp\?exp=\d+&sig=[a-f0-9]+$/);
     expect(res.body.data.profileCompletion).toMatchObject({ percentage: 100, missingFields: [] });
 
     const stored = await db('profiles').where({ user_id: user.userId }).first();
@@ -334,14 +338,16 @@ describe('profile picture', () => {
     expect((await as(user.token).upload(await webp(), 'avatar.webp', 'image/webp')).status).toBe(200);
   });
 
-  it('serves the stored image publicly so it can be displayed', async () => {
+  it('serves the stored image through its signed URL', async () => {
     const res = await as(user.token).upload(await landscapePng(), 'a.png', 'image/png');
-    const image = await request(app).get(new URL(res.body.data.profilePhotoUrl).pathname);
+    const photoUrl = new URL(res.body.data.profilePhotoUrl);
+    const image = await request(app).get(photoUrl.pathname + photoUrl.search);
 
     expect(image.status).toBe(200);
     expect(image.headers['content-type']).toBe('image/webp');
     expect(image.headers['cross-origin-resource-policy']).toBe('cross-origin');
     expect(image.headers['x-content-type-options']).toBe('nosniff');
+    expect(image.headers['cache-control']).toMatch(/private/);
   });
 
   it.each([
@@ -396,7 +402,8 @@ describe('profile picture', () => {
     const first = (await as(user.token).upload(await landscapePng(), 'one.png', 'image/png')).body.data.profilePhotoUrl;
     expect((await as(user.token).upload(Buffer.from('nope'), 'x.png', 'image/png')).status).toBe(415);
 
-    expect((await as(user.token).get('/profile')).body.data.profilePhotoUrl).toBe(first);
+    const kept = (await as(user.token).get('/profile')).body.data.profilePhotoUrl;
+    expect(new URL(kept).pathname).toBe(new URL(first).pathname);
     expect(fs.existsSync(storedFile(first))).toBe(true);
   });
 
@@ -416,6 +423,70 @@ describe('profile picture', () => {
     const res = await as(fresh.token).upload(await landscapePng(), 'a.png', 'image/png');
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('Create your profile before adding a profile picture.');
+  });
+});
+
+describe('profile photo access control', () => {
+  async function loginAgain(email) {
+    const login = await request(app).post('/api/v1/auth/login').send({ identifier: email, password: PASSWORD });
+    const done = await request(app)
+      .post('/api/v1/auth/login-verification/complete')
+      .send({ verification_token: login.body.data.verification_token, ...ONE_FACE });
+    return done.body.data.access_token;
+  }
+
+  it('enforces visibility, blocks, signatures, and deletion', async () => {
+    const owner = await signUpAndLogin();
+    const member = await signUpAndLogin();
+    const stranger = await signUpAndLogin();
+    const admin = await signUpAndLogin();
+    await as(owner.token).post('/profile', { ...VALID_PROFILE, name: 'Owner' });
+    await as(member.token).post('/profile', VALID_PROFILE);
+    await as(stranger.token).post('/profile', VALID_PROFILE);
+    await as(admin.token).post('/profile', VALID_PROFILE);
+
+    const uploaded = await as(owner.token).upload(await landscapePng(), 'a.png', 'image/png');
+    const photoUrl = new URL(uploaded.body.data.profilePhotoUrl);
+    const filename = photoUrl.pathname.split('/').pop();
+    const stored = `/media/profile-photos/${filename}`;
+
+    const anonymous = await request(app).get(photoUrl.pathname);
+    expect(anonymous.status).toBe(401);
+
+    const signed = await request(app).get(photoUrl.pathname + photoUrl.search);
+    expect(signed.status).toBe(200);
+
+    const tampered = await request(app).get(`${photoUrl.pathname}${photoUrl.search.slice(0, -1)}0`);
+    expect(tampered.status).toBe(403);
+
+    const expiredUrl = new URL(signProfilePhotoUrl(stored, { now: Date.now() - 700_000 }));
+    expect((await request(app).get(expiredUrl.pathname + expiredUrl.search)).status).toBe(403);
+
+    expect((await request(app).get('/media/profile-photos/not-a-uuid.webp')).status).toBe(400);
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${owner.token}`)).status).toBe(200);
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${member.token}`)).status).toBe(200);
+
+    await db('users').where({ user_id: admin.userId }).update({ role: 'admin' });
+    const adminToken = await loginAgain(admin.email);
+    await as(owner.token).put('/privacy/settings', { photoVisibility: 'nobody' });
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${member.token}`)).status).toBe(403);
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${owner.token}`)).status).toBe(200);
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
+    expect((await request(app).get(photoUrl.pathname + photoUrl.search)).status).toBe(200);
+
+    await as(owner.token).put('/privacy/settings', { photoVisibility: 'connections' });
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${stranger.token}`)).status).toBe(403);
+    const sent = await as(stranger.token).post('/connections', { receiverId: owner.userId });
+    expect(sent.status).toBe(201);
+    expect((await as(owner.token).put(`/connections/${sent.body.data.connection.id}`, { action: 'accept' })).status).toBe(200);
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${stranger.token}`)).status).toBe(200);
+
+    await as(owner.token).put('/privacy/settings', { photoVisibility: 'everyone' });
+    expect((await as(member.token).post('/blocks', { blockedUserId: owner.userId, reason: 'spam' })).status).toBe(201);
+    expect((await request(app).get(`/media/profile-photos/${filename}`).set('Authorization', `Bearer ${member.token}`)).status).toBe(403);
+
+    await as(owner.token).delete('/profile/photo');
+    expect((await request(app).get(photoUrl.pathname + photoUrl.search)).status).toBe(404);
   });
 });
 

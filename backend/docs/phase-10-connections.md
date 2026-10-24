@@ -215,8 +215,8 @@ Database errors and stack traces are never returned (central error handler).
 * **Blocking** is checked in both directions with `Block.isBlocked`. A blocked
   pair cannot send or accept requests, and is hidden from all lists and from
   details. The status endpoint reports `unavailable` without saying who
-  blocked whom. The block endpoints are still Phase 3 placeholders, so blocks
-  can only be created directly in the `blocks` table for now.
+  blocked whom. Blocks are managed with `GET/POST /api/v1/blocks` and
+  `DELETE /api/v1/blocks/:userId` (added with Phase 11, see phase-11-chat.md).
 * **Privacy**: responses contain only `userId`, `name`, `profilePicture`,
   derived `age` and `location`. Email, mobile, exact date of birth, password
   hash, OTP and session data are never selected. The profile model has no
@@ -293,11 +293,10 @@ Accepted connections expose `canCommunicate: true` in the status response.
   cancel), with empty and error states.
 * **`/connections`** lists accepted connections with *View Profile*
   (`/matches?view=<userId>` opens the match details), *Chat*
-  (`/messages?with=<userId>`, the Phase 11 placeholder page) and *Remove*.
+  (`/chat/<userId>`, the Phase 11 private chat) and *Remove*.
 
 ## 9. Known limitations
 
-* No block/unblock API yet (Phase 3 placeholder), so blocks must be inserted directly.
 * No per-field privacy settings exist. Only public card fields are returned.
 * Compatibility is not shown on the requests page. *View Profile* opens the
   match details, which include it.
