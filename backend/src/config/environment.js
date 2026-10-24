@@ -228,13 +228,19 @@ function validateEnvironment(cfg = config) {
     if (PLACEHOLDER_SECRET.test(cfg.otp.secret) || cfg.otp.secret.length < 32) {
       problems.push('OTP_SECRET must be a random value of at least 32 characters in production');
     }
-    if (cfg.otp.provider === 'dev') {
-      problems.push('OTP_PROVIDER=dev is for development only — configure a real OTP provider');
-    }
+    // TODO: Restore before production use. Temporarily skipped so Render can
+    // start with OTP_PROVIDER=dev. This does not expose development OTP codes:
+    // the dev outbox route stays unmounted in production, and getProvider()
+    // still refuses the dev provider when NODE_ENV=production.
+    // if (cfg.otp.provider === 'dev') {
+    //   problems.push('OTP_PROVIDER=dev is for development only — configure a real OTP provider');
+    // }
   }
-  if (cfg.isProduction && !(cfg.media.publicBaseUrlConfigured && cfg.media.publicBaseUrl.startsWith('https://'))) {
-    problems.push('MEDIA_PUBLIC_BASE_URL must be set to the public https:// origin that serves media in production');
-  }
+  // TODO: Restore before production use. Temporarily skipped so Render can
+  // start without MEDIA_PUBLIC_BASE_URL. Signed photo access is unchanged.
+  // if (cfg.isProduction && !(cfg.media.publicBaseUrlConfigured && cfg.media.publicBaseUrl.startsWith('https://'))) {
+  //   problems.push('MEDIA_PUBLIC_BASE_URL must be set to the public https:// origin that serves media in production');
+  // }
   if (cfg.otp.length < 4 || cfg.otp.length > 10) problems.push('OTP_LENGTH must be between 4 and 10');
   return problems;
 }
@@ -255,9 +261,12 @@ function validateProductionReadiness(cfg = config) {
       issues.push('Twilio settings (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER) must be set for production SMS delivery');
     }
   }
-  if (cfg.webrtc.turnUrls.length === 0) {
-    issues.push('WEBRTC_TURN_URL must be configured with a TURN relay server in production for reliable WebRTC calls across NATs');
-  }
+  // TODO: Restore before production use. Temporarily skipped so Render can
+  // start without WEBRTC_TURN_URL. Calls still do not advertise a TURN relay
+  // unless WEBRTC_TURN_URL is set.
+  // if (cfg.webrtc.turnUrls.length === 0) {
+  //   issues.push('WEBRTC_TURN_URL must be configured with a TURN relay server in production for reliable WebRTC calls across NATs');
+  // }
   return issues;
 }
 

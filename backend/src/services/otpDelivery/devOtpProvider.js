@@ -3,8 +3,10 @@
  *
  * Instead of sending an email/SMS, it keeps the latest code per destination in
  * memory (the "dev outbox"), readable through GET /api/v1/dev/otp, which is
- * mounted only when NODE_ENV !== 'production' and OTP_PROVIDER=dev. Production
- * refuses to start with this provider (see config/environment.js).
+ * mounted only when NODE_ENV !== 'production' and OTP_PROVIDER=dev.
+ * getProvider() still refuses this provider when NODE_ENV=production.
+ * TODO: restore the production startup rejection of OTP_PROVIDER=dev in
+ * config/environment.js before production use.
  *
  * The code itself is never written to the logs.
  */
