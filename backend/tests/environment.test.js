@@ -87,6 +87,22 @@ describe('environment configuration', () => {
     ]);
   });
 
+  it('uses the public API origin for media URLs in production when none is configured', () => {
+    const missing = loadConfig({ NODE_ENV: 'production', PORT: '5000' });
+    expect(missing.media.publicBaseUrl).toBe('https://secure-matchmaking-platform.onrender.com');
+    expect(missing.media.publicBaseUrlConfigured).toBe(false);
+
+    const local = loadConfig({ NODE_ENV: 'production', MEDIA_PUBLIC_BASE_URL: 'http://localhost:5000' });
+    expect(local.media.publicBaseUrl).toBe('https://secure-matchmaking-platform.onrender.com');
+
+    const loopback = loadConfig({ NODE_ENV: 'production', MEDIA_PUBLIC_BASE_URL: 'http://127.0.0.1:5000' });
+    expect(loopback.media.publicBaseUrl).toBe('https://secure-matchmaking-platform.onrender.com');
+
+    const explicit = loadConfig({ NODE_ENV: 'production', MEDIA_PUBLIC_BASE_URL: 'https://cdn.example.com/' });
+    expect(explicit.media.publicBaseUrl).toBe('https://cdn.example.com');
+    expect(explicit.media.publicBaseUrlConfigured).toBe(true);
+  });
+
   it('reads media and profile image settings', () => {
     const config = loadConfig({ PORT: '7000', PROFILE_IMAGE_MAX_SIZE_MB: '2.5', UPLOADS_DIR: 'data/uploads' });
     expect(config.media).toMatchObject({ storageProvider: 'local', publicBaseUrl: 'http://localhost:7000', publicBaseUrlConfigured: false });
