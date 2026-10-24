@@ -1,16 +1,9 @@
-const request = require('supertest');
-const app = require('../src/app');
-const db = require('../src/config/database').getDb();
 const mlInferenceService = require('../src/ml/inference/mlInferenceService');
 const { extractFeatures, vectorizeFeatures, FEATURE_ORDER } = require('../src/ml/features/featureGenerator');
 const { predictProb, trainLogisticRegression, sigmoid } = require('../src/ml/training/logisticRegression');
 const MlModel = require('../src/models/mlModel');
 
 describe('Phase 9 — ML Recommendation System', () => {
-  beforeAll(async () => {
-    await db('ml_model_versions').del();
-  });
-
   describe('Logistic Regression Algorithm', () => {
     it('sigmoid returns values between 0 and 1', () => {
       expect(sigmoid(0)).toBe(0.5);
@@ -65,22 +58,28 @@ describe('Phase 9 — ML Recommendation System', () => {
   });
 
   describe('ML Inference Service', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+      mlInferenceService.invalidateModelCache();
+    });
+
     it('predictCandidateProbability returns null when no active model exists', async () => {
+      jest.spyOn(MlModel, 'getActiveModel').mockResolvedValue(null);
       mlInferenceService.invalidateModelCache();
       const p = await mlInferenceService.predictCandidateProbability(1, 2);
       expect(p).toBeNull();
     });
 
     it('loads active model and predicts properly', async () => {
-      // Insert mock active model
-      await MlModel.insertModel({
+      jest.spyOn(MlModel, 'getActiveModel').mockResolvedValue({
         model_version: 'test-v1',
         model_type: 'logistic_regression',
         feature_version: 'v1',
         training_samples: 10,
         positive_samples: 5,
         negative_samples: 5,
-        weights: JSON.stringify({
+        status: 'active',
+        weights: {
           bias: -1.0,
           compatibility_score: 2.0,
           location_similarity: 0.5,
@@ -89,9 +88,8 @@ describe('Phase 9 — ML Recommendation System', () => {
           hobby_similarity: 1.0,
           lifestyle_similarity: 0.5,
           food_similarity: 0,
-          quiz_similarity: 1.0
-        }),
-        status: 'active'
+          quiz_similarity: 1.0,
+        },
       });
 
       mlInferenceService.invalidateModelCache();

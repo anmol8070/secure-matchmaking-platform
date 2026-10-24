@@ -284,7 +284,7 @@ Without passing verification **no access token exists**, so the dashboard stays 
 | No tokens or passwords in logs | The access log omits query strings, headers and bodies; the logger redacts `password`, `otp`, `token`, `authorization`, `secret`, … |
 | Strong secrets | Production refuses to start unless `JWT_SECRET` and `OTP_SECRET` are random values of 32+ characters and not placeholders |
 | OTP expiry, attempt and resend limits | `OTP_EXPIRY_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_SENDS_PER_HOUR` |
-| Brute-force protection | Per-IP limit on all `/auth` requests (`AUTH_RATE_LIMIT_MAX`), plus failed checks per IP + account (`AUTH_FAILED_ATTEMPTS_MAX`). There is **no account lockout**, so attackers cannot lock real users out |
+| Brute-force protection | Per-IP limit on the `/auth` credential and OTP requests (`AUTH_RATE_LIMIT_MAX`; since Phase 14 the authenticated `/auth/me` and `/auth/logout` are not counted), plus failed checks per IP + account (`AUTH_FAILED_ATTEMPTS_MAX`). There is **no account lockout**, so attackers cannot lock real users out |
 | Input validation | zod schemas for every auth body; emails and mobiles normalised; unknown fields rejected on the verification endpoint |
 | Protected and admin APIs | `requireAuth`, `requireRole('admin')` |
 | No unnecessary camera images | Frames stay in browser memory, are cleared after detection, and are never sent or stored |

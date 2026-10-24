@@ -15,6 +15,9 @@ const ApiError = require('../../utils/ApiError');
 
 const PROVIDERS = {
   dev: () => require('./devOtpProvider'),
+  smtp: () => require('./smtpProvider'),
+  twilio: () => require('./twilioProvider'),
+  production: () => require('./productionOtpProvider'),
 };
 
 function getProvider(name = config.otp.provider) {

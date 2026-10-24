@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Alert from '../../../components/common/Alert.jsx';
+import { useToast } from '../../../components/common/Toast.jsx';
 import QuizQuestions from '../../../components/preferences/QuizQuestions.jsx';
 import { preferenceService } from '../../../services/preferenceService.js';
 import { answersToMap, quizErrorsFromServer, toQuizAnswers, validateQuiz } from '../../../utils/preferenceFields.js';

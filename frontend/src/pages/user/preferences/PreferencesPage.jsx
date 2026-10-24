@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Alert from '../../../components/common/Alert.jsx';
+import { useToast } from '../../../components/common/Toast.jsx';
 import PreferenceForm from '../../../components/preferences/PreferenceForm.jsx';
 import HobbiesSelector from '../../../components/preferences/HobbiesSelector.jsx';
 import QuizQuestions from '../../../components/preferences/QuizQuestions.jsx';
@@ -24,6 +25,7 @@ import {
 import { USER_PATHS } from '../../../routes/paths.js';
 
 function PreferencesPage() {
+  const notify = useToast();
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [loadError, setLoadError] = useState('');
   const [options, setOptions] = useState(null);
@@ -74,7 +76,6 @@ function PreferencesPage() {
 
   const save = async (event) => {
     event.preventDefault();
-    setMessage('');
     setError('');
     setHobbyError('');
 
@@ -92,7 +93,7 @@ function PreferencesPage() {
     try {
       const { data } = await preferenceService.save({ ...toPreferenceBody(values), hobbyIds, quizAnswers }, { exists });
       applySaved(data);
-      setMessage('Preferences saved successfully.');
+      notify('Preferences saved successfully.');
     } catch (err) {
       setErrors(fieldErrors(err));
       setHobbyError(fieldErrors(err).hobbyIds || '');
@@ -113,7 +114,6 @@ function PreferencesPage() {
         <p className="muted">
           Tell us what you are looking for. Your own details are in your <Link to={USER_PATHS.PROFILE}>profile</Link>.
         </p>
-        <Alert>{message}</Alert>
         <Alert type="error">{error}</Alert>
         <PreferenceForm values={values} errors={errors} options={options} onChange={setValues} />
       </section>

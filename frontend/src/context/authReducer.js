@@ -25,6 +25,8 @@ export const initialAuthState = {
   verification: null,
   // Why the last login attempt ended: { message, context } — shown on the login page
   notice: null,
+  // Page requested before sign-in, kept from the verification step (see routes/returnPath.js)
+  returnTo: null,
 };
 
 export function authReducer(state, action) {
@@ -45,7 +47,13 @@ export function authReducer(state, action) {
     case 'LIVE_VERIFICATION_STARTED':
       return state.verification ? { ...state, status: AUTH_STATUS.LIVE_VERIFICATION_PENDING } : state;
     case 'AUTHENTICATED':
-      return { status: AUTH_STATUS.AUTHENTICATED, user: action.user, verification: null, notice: null };
+      return {
+        status: AUTH_STATUS.AUTHENTICATED,
+        user: action.user,
+        verification: null,
+        notice: null,
+        returnTo: state.verification?.returnTo || null,
+      };
     case 'VERIFICATION_ENDED':
       return {
         status: AUTH_STATUS.LOGGED_OUT,

@@ -104,6 +104,11 @@ describe('connection requests page', () => {
   it('accepts and rejects received requests and reloads the list', async () => {
     const api = signedIn({
       'GET /connections/requests/received': [
+        // The member navigation and this page both load the list on mount.
+        ok({ requests: [
+          { id: 1, sender: person(4, 'Riya Shah'), status: 'pending', createdAt: '2026-10-01T00:00:00.000Z' },
+          { id: 2, sender: person(5, 'Kabir Rao'), status: 'pending', createdAt: '2026-10-02T00:00:00.000Z' },
+        ] }),
         ok({ requests: [
           { id: 1, sender: person(4, 'Riya Shah'), status: 'pending', createdAt: '2026-10-01T00:00:00.000Z' },
           { id: 2, sender: person(5, 'Kabir Rao'), status: 'pending', createdAt: '2026-10-02T00:00:00.000Z' },
@@ -185,7 +190,7 @@ describe('connections page', () => {
 
     const card = (await screen.findByText('Riya Shah, 29')).closest('li');
     expect(within(card).getByRole('link', { name: 'View Profile' })).toHaveAttribute('href', '/matches?view=4');
-    expect(within(card).getByRole('link', { name: 'Chat' })).toHaveAttribute('href', '/messages?with=4');
+    expect(within(card).getByRole('link', { name: 'Chat' })).toHaveAttribute('href', '/chat/4');
     expect(within(card).getByText(/Connected/)).toBeInTheDocument();
   });
 

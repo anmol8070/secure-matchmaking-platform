@@ -14,6 +14,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { connectionService } from '../../services/connectionService.js';
+import { useToast } from '../common/Toast.jsx';
 
 const SUCCESS_MESSAGES = {
   send: 'Connection request sent.',
@@ -27,6 +28,7 @@ function ConnectionButton({ userId, onChange }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
+  const notify = useToast();
   // A ref (not state) so a second click in the same tick is ignored too.
   const inFlight = useRef(false);
 
@@ -57,6 +59,7 @@ function ConnectionButton({ userId, onChange }) {
       if (kind === 'send') await connectionService.sendConnectionRequest(userId);
       else await connectionService.updateConnectionRequest(status.connectionId, kind);
       setMessage(SUCCESS_MESSAGES[kind]);
+      notify(SUCCESS_MESSAGES[kind]);
       onChange?.(kind);
     } catch (err) {
       setError(err.message || 'Unable to process request.');

@@ -296,6 +296,7 @@ describe('login (step 1: credentials)', () => {
         requires_live_verification: true,
         verification_token: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
         verification_expires_in: config.loginVerification.expiryMinutes * 60,
+        has_profile_photo: false,
       },
     });
     expect(res.body.data.access_token).toBeUndefined();
@@ -428,7 +429,15 @@ describe('live human/face presence verification (step 2)', () => {
     const row = await db('login_verifications').where({ user_id: userId }).first();
     const result = typeof row.detection_result === 'string' ? JSON.parse(row.detection_result) : row.detection_result;
     expect(row.verification_status).toBe('passed');
-    expect(result).toEqual({ ...ONE_FACE, outcome: 'passed' });
+    expect(result).toEqual({
+      ...ONE_FACE,
+      outcome: 'passed',
+      client_profile_flag_present: false,
+      face_presence_verified: true,
+      biometric_identity_verified: false,
+      verification_mechanism: 'live_presence_session_challenge',
+      attempted_at: expect.any(String),
+    });
 
     // The session links back to the verification that completed the login.
     const session = await db('user_sessions').where({ user_id: userId }).first();
@@ -483,19 +492,46 @@ describe('live human/face presence verification (step 2)', () => {
     expect(await db('user_sessions').where({ user_id: userId }).first()).toBeUndefined();
   });
 
-  describe('profile picture is independent of login verification', () => {
+  describe('client profile_matched flag is not a login decision', () => {
     it.each([
-      ['no profile at all', null],
-      ['a profile without a picture', { profile_photo_url: null }],
-      ['a profile picture of someone else', { profile_photo_url: 'https://cdn.example.com/photos/another-person.jpg' }],
-      ['a profile picture with no face (a landscape)', { profile_photo_url: 'https://cdn.example.com/photos/mountains.jpg' }],
-    ])('login verification passes with %s', async (label, profile) => {
+      ['no profile at all', null, false],
+      ['a profile without a picture', { profile_photo_url: null }, false],
+    ])('login verification passes with %s', async (label, profile, hasPhoto) => {
       const { email, userId } = await registerAndVerify();
-      if (profile) await db('profiles').insert({ user_id: userId, name: 'Test User', ...profile });
+      if (profile) await db('profiles').insert({ user_id: userId, name: 'Test User', date_of_birth: '2000-01-01', ...profile });
 
-      const token = await startLogin(email);
-      const res = await post('/auth/login-verification/complete', { verification_token: token, ...ONE_FACE });
+      const login = await post('/auth/login', { identifier: email, password: PASSWORD });
+      expect(login.body.data.has_profile_photo).toBe(hasPhoto);
+      const res = await post('/auth/login-verification/complete', {
+        verification_token: login.body.data.verification_token,
+        ...ONE_FACE,
+      });
       expect(res.status).toBe(200);
+    });
+
+    it.each([true, false])('forged profile_matched %s does not change a valid presence login', async (flag) => {
+      const { email, userId } = await registerAndVerify();
+      await db('profiles').insert({
+        user_id: userId,
+        name: 'Test User',
+        date_of_birth: '2000-01-01',
+        profile_photo_url: '/media/profile-photos/someone.webp',
+      });
+      const login = await post('/auth/login', { identifier: email, password: PASSWORD });
+      expect(login.body.data.has_profile_photo).toBe(true);
+      expect(login.body.data.profile_photo_url).toBeUndefined();
+
+      const res = await post('/auth/login-verification/complete', {
+        verification_token: login.body.data.verification_token,
+        ...ONE_FACE,
+        profile_matched: flag,
+      });
+      expect(res.status).toBe(200);
+      const row = await db('login_verifications').where({ user_id: userId, verification_status: 'passed' }).first();
+      const recorded = typeof row.detection_result === 'string' ? JSON.parse(row.detection_result) : row.detection_result;
+      expect(recorded.biometric_identity_verified).toBe(false);
+      expect(recorded.client_profile_flag_present).toBe(true);
+      expect(recorded.profile_matched).toBeUndefined();
     });
   });
 });
@@ -564,10 +600,19 @@ describe('authentication and authorization middleware', () => {
     expect(res.status).toBe(401);
   });
 
-  it('lets users reach user-protected APIs (placeholders return 501)', async () => {
-    const res = await get('/matches', userToken);
-    expect(res.status).toBe(501);
-    expect(res.body).toEqual(NOT_IMPLEMENTED);
+  it('does not count /auth/me against the login rate-limit budget', async () => {
+    // The auth limiter allows AUTH_RATE_LIMIT_MAX (100) requests per IP; /me is authenticated and exempt.
+    for (let i = 0; i < 120; i += 1) {
+      const res = await get('/auth/me', userToken);
+      if (res.status !== 200) throw new Error(`request ${i + 1} returned ${res.status}`);
+    }
+  });
+
+  it('lets users reach user-protected APIs', async () => {
+    // Every user module is implemented now (Phase 13); only some admin APIs are still placeholders.
+    const res = await get('/privacy/settings', userToken);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
   });
 
   it('forbids users from admin APIs with 403', async () => {
@@ -594,9 +639,10 @@ describe('authentication and authorization middleware', () => {
     });
     expect(done.body.data.user.role).toBe('admin');
 
+    // Implemented in Phase 14.
     const res = await get('/admin/users', done.body.data.access_token);
-    expect(res.status).toBe(501);
-    expect(res.body).toEqual(NOT_IMPLEMENTED);
+    expect(res.status).toBe(200);
+    expect(res.body.data.pagination).toMatchObject({ page: 1 });
   });
 
   it('blocks an existing session as soon as the account is suspended', async () => {

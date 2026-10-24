@@ -231,6 +231,16 @@ describe('sending requests', () => {
     expect(requestEvents).toHaveLength(1);
   });
 
+  it('never answers concurrent requests with a server error (lock conflicts are retried)', async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const [a, b] = [await member(), await member()];
+      const results = await Promise.all([send(a, b), send(a, b), send(b, a), send(a, b), send(b, a), send(b, a)]);
+      const statuses = results.map((r) => r.status);
+      expect(statuses.filter((s) => s === 201)).toHaveLength(1);
+      expect(statuses.filter((s) => s === 409)).toHaveLength(5);
+    }
+  }, 60000);
+
   it('allows a new request after a cancel, reusing the same row', async () => {
     const [a, b] = [await member(), await member()];
     const id = await pending(a, b);

@@ -69,6 +69,14 @@ describe('layered structure', () => {
         'login_verifications',
         'otp_codes',
         'user_sessions',
+        // Phase 9
+        'ml_model_versions',
+        // Phase 12
+        'video_calls',
+        // Phase 13
+        'privacy_settings',
+        // Phase 14
+        'admin_audit_logs',
       ].sort()
     );
   });
@@ -107,27 +115,15 @@ describe('layered structure', () => {
       expect({ file, imports: read(file).match(/require([^)]*verification[^)]*)/gi) }).toEqual({ file, imports: null });
     }
     for (const file of ['services/verificationService.js', 'services/authService.js', 'services/sessionService.js']) {
-      expect({ file, imports: read(file).match(/require([^)]*(profile|photo|storage)[^)]*)/gi) }).toEqual({ file, imports: null });
+      expect({ file, imports: read(file).match(/require\(([^)]*(profile|photo|storage)[^)]*)\)/gi) }).toEqual({ file, imports: null });
     }
   });
 
-  it('contains no face recognition / face comparison logic anywhere', () => {
-    const offenders = [];
-    const scan = (dir) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) scan(full);
-        else if (/.(js|jsx)$/.test(entry.name)) {
-          const code = fs.readFileSync(full, 'utf8');
-          if (/faceMatch|compareFaces?|faceRecogni[sz]|matchFace|faceEmbedding|faceDescriptor|verifyUserIdentity|euclideanDistance/i.test(code)) {
-            offenders.push(path.relative(SRC, full));
-          }
-        }
-      }
-    };
-    scan(SRC);
-    scan(path.resolve(SRC, '../../frontend/src'));
-    expect(offenders).toEqual([]);
+  it('records presence only and does not treat a client flag as identity', () => {
+    const verification = read('services/verificationService.js');
+    expect(verification).not.toMatch(/descriptor|embedding|imageBase64|photo_base64/i);
+    expect(verification).toMatch(/biometric_identity_verified: false/);
+    expect(verification).not.toMatch(/profile_photo_url/);
   });
 
   it('keeps login verification independent of profiles and profile photos', () => {

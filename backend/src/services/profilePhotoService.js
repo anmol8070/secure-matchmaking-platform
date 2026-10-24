@@ -18,6 +18,7 @@ const ApiError = require('../utils/ApiError');
 const HTTP = require('../constants/httpStatus');
 const logger = require('../utils/logger');
 const { getStorage } = require('./storage');
+const { signProfilePhotoUrl } = require('./storage/photoSignature');
 
 const ALLOWED_TYPES = Object.freeze({
   'image/jpeg': ['.jpg', '.jpeg'],
@@ -116,6 +117,8 @@ module.exports = {
   deleteStoredPhoto,
   validateUpload,
   detectImageType,
+  signProfilePhotoUrl,
   ALLOWED_TYPES,
   MESSAGES,
 };
+

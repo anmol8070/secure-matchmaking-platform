@@ -27,10 +27,9 @@ const { getDb } = require('../config/database');
 const { ActivityFeedback, Block, ConnectionRequest, Profile, User } = require('../models');
 const { STATUS } = require('../models/connectionRequestModel');
 const { CONNECTION_EVENTS, emitConnectionEvent } = require('./connectionEvents');
-const { toPublicUrl } = require('./storage');
-const { ageFromDateOfBirth } = require('../utils/age');
-const { isUniqueViolation } = require('../utils/dbErrors');
+const { isUniqueViolation, withLockRetry } = require('../utils/dbErrors');
 const ApiError = require('../utils/ApiError');
+const privacyService = require('./privacyService');
 
 const REJECTED_REQUEST_COOLDOWN_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -92,21 +91,6 @@ function rejectedSenderMustWait(row, senderId, now = new Date()) {
   return rerequestAllowedAt(row) > now;
 }
 
-/**
- * Public card for the other member. Only display fields — never email,
- * mobile, exact date of birth or account/security columns.
- */
-function formatUser(profile, userId = profile?.user_id ?? profile?.other_user_id) {
-  if (!profile) return null;
-  return {
-    userId: Number(userId),
-    name: profile.name,
-    profilePicture: toPublicUrl(profile.profile_photo_url),
-    age: ageFromDateOfBirth(profile.date_of_birth),
-    location: [profile.city, profile.state, profile.country].filter(Boolean).join(', ') || null,
-  };
-}
-
 /** A connection row as seen by one of its members. */
 function formatConnection(row, viewerId) {
   return {
@@ -148,7 +132,9 @@ async function createConnectionRequest(senderId, receiverId) {
 
   let created;
   try {
-    created = await getDb().transaction(async (trx) => {
+    // Concurrent requests for the same pair can deadlock on InnoDB: retry, and
+    // the retry then sees the winner's row and answers 409.
+    created = await withLockRetry(() => getDb().transaction(async (trx) => {
       const receiver = await findEligibleProfile(receiverId, trx);
       if (!receiver) throw ApiError.notFound(MESSAGES.USER_NOT_FOUND);
 
@@ -179,7 +165,7 @@ async function createConnectionRequest(senderId, receiverId) {
 
       await logInteraction(INTERACTION_ACTIONS.SENT, senderId, receiverId, requestId, trx);
       return ConnectionRequest.findById(requestId, trx);
-    });
+    }));
   } catch (err) {
     // Two simultaneous requests for the same pair: the pair UNIQUE index lets only one insert win.
     if (isUniqueViolation(err)) throw ApiError.conflict(MESSAGES.REQUEST_EXISTS);
@@ -280,6 +266,28 @@ const removeConnection = (userId, connectionId) =>
     wrongStateMessage: MESSAGES.NOT_CONNECTED,
   });
 
+/**
+ * Ends the relationship between two users because one blocked the other
+ * (Phase 13): accepted → disconnected, pending → cancelled. Unblocking later
+ * restores nothing — they must send a new request. No connection events are
+ * emitted here: the block's own event closes chats and calls (blockService).
+ * Returns the previous status, or null when there was nothing to end.
+ */
+async function severForBlock(blockerId, blockedId) {
+  const row = await ConnectionRequest.findBetween(blockerId, blockedId);
+  if (!row) return null;
+  if (row.status === STATUS.ACCEPTED) {
+    const changed = await ConnectionRequest.transition(row.request_id, STATUS.ACCEPTED, STATUS.DISCONNECTED);
+    if (changed) await logInteraction(INTERACTION_ACTIONS.REMOVED, blockerId, blockedId, row.request_id);
+    return changed ? STATUS.ACCEPTED : null;
+  }
+  if (row.status === STATUS.PENDING) {
+    const changed = await ConnectionRequest.transition(row.request_id, STATUS.PENDING, STATUS.CANCELLED);
+    return changed ? STATUS.PENDING : null;
+  }
+  return null;
+}
+
 /** PUT /connections/:id { action } → the matching transition. */
 const ACTIONS = Object.freeze({
   accept: acceptConnectionRequest,
@@ -295,15 +303,24 @@ function updateConnectionRequest(userId, requestId, action) {
 
 /* ---------------- read ---------------- */
 
+/** Privacy-filtered cards of the other member of each listed row (Phase 13). */
+function cardsForRows(viewerId, rows) {
+  return privacyService.cardsFor(
+    viewerId,
+    rows.map((row) => ({ userId: row.other_user_id, profile: row }))
+  );
+}
+
 /** Pending requests other users sent to `userId` (newest first). */
 async function getReceivedRequests(userId) {
   const rows = await ConnectionRequest.listWithCounterpart(userId, 'received', [STATUS.PENDING]).orderBy(
     'connection_requests.created_at',
     'desc'
   );
+  const cards = await cardsForRows(userId, rows);
   return rows.map((row) => ({
     id: Number(row.request_id),
-    sender: formatUser(row, row.other_user_id),
+    sender: cards.get(Number(row.other_user_id)),
     status: row.status,
     createdAt: toIso(row.created_at),
   }));
@@ -318,9 +335,10 @@ async function getSentRequests(userId) {
     'connection_requests.created_at',
     'desc'
   );
+  const cards = await cardsForRows(userId, rows);
   return rows.map((row) => ({
     id: Number(row.request_id),
-    receiver: formatUser(row, row.other_user_id),
+    receiver: cards.get(Number(row.other_user_id)),
     status: row.status,
     createdAt: toIso(row.created_at),
     respondedAt: toIso(row.responded_at),
@@ -333,9 +351,10 @@ async function getMyConnections(userId) {
     'connection_requests.responded_at',
     'desc'
   );
+  const cards = await cardsForRows(userId, rows);
   return rows.map((row) => ({
     connectionId: Number(row.request_id),
-    user: formatUser(row, row.other_user_id),
+    user: cards.get(Number(row.other_user_id)),
     connectedAt: toIso(row.responded_at || row.updated_at),
   }));
 }
@@ -350,7 +369,7 @@ async function getConnectionById(userId, requestId) {
   if (await Block.isBlocked(userId, otherId)) throw ApiError.notFound(MESSAGES.CONNECTION_NOT_FOUND);
 
   const profile = await findEligibleProfile(otherId);
-  return { ...formatConnection(row, userId), user: formatUser(profile, otherId) };
+  return { ...formatConnection(row, userId), user: await privacyService.cardFor(userId, otherId, profile) };
 }
 
 /**
@@ -428,6 +447,7 @@ module.exports = {
   rejectConnectionRequest,
   cancelConnectionRequest,
   removeConnection,
+  severForBlock,
   getReceivedRequests,
   getSentRequests,
   getMyConnections,

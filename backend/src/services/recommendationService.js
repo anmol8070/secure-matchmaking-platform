@@ -15,8 +15,8 @@
 const { Profile, Block } = require('../models');
 const matchingService = require('./matchingService');
 const mlInferenceService = require('../ml/inference/mlInferenceService');
-const { toPublicUrl } = require('./storage');
 const { ageFromDateOfBirth } = require('../utils/age');
+const privacyService = require('./privacyService');
 const ApiError = require('../utils/ApiError');
 const config = require('../config/environment');
 
@@ -34,22 +34,11 @@ const RECOMMENDATION_DEFAULT_LIMIT = config.recommendation.defaultLimit;
 const RECOMMENDATION_MAX_LIMIT = config.recommendation.maxLimit;
 
 /**
- * Formats a candidate profile row into the public-facing profile object.
- * Sensitive or private fields are never included.
+ * Profile data shown to the viewer is filtered by the candidate's privacy
+ * settings in privacyService.filterMatchItem (Phase 13): hidden fields, the
+ * "why this match" reasons and score-breakdown parts that would reveal them
+ * are removed. The compatibility formula itself is unchanged.
  */
-function formatCandidateProfile(candidate) {
-  return {
-    name: candidate.name || null,
-    age: ageFromDateOfBirth(candidate.date_of_birth),
-    gender: candidate.gender || null,
-    location: [candidate.city, candidate.state, candidate.country].filter(Boolean).join(', ') || null,
-    education: candidate.education || null,
-    occupation: candidate.occupation || null,
-    lifestyle: candidate.lifestyle || null,
-    bio: candidate.bio || null,
-    profilePicture: toPublicUrl(candidate.profile_photo_url),
-  };
-}
 
 /**
  * Returns paginated, deterministically-ranked recommendations for `userId`.
@@ -78,6 +67,17 @@ async function getRecommendations(userId, options = {}, trx) {
   // 2. Fetch eligible active candidate profiles (excludes self + blocked)
   let candidateProfiles = await Profile.getEligibleCandidates(userId, blockedUserIds, trx);
 
+  // 2b. Privacy (Phase 13): drop profiles hidden from this viewer ("connections"
+  //     only), and let search filters match only fields the viewer may see, so
+  //     a hidden value cannot be discovered by filtering on it.
+  const privacy = await privacyService.recommendationContext(
+    userId,
+    candidateProfiles.map((c) => c.user_id),
+    trx
+  );
+  candidateProfiles = candidateProfiles.filter((c) => privacy.visible(c.user_id));
+  const shown = (c, field) => privacy.allowed(c.user_id)[field];
+
   // 2a. Apply optional client-requested filters to narrow the candidate pool.
   //     Filters do NOT change the Phase 7 compatibility formula — they only
   //     reduce which candidates are scored and ranked.
@@ -87,13 +87,15 @@ async function getRecommendations(userId, options = {}, trx) {
     const loc = location.toLowerCase();
     candidateProfiles = candidateProfiles.filter(
       (c) =>
-        (c.city && c.city.toLowerCase().includes(loc)) ||
+        shown(c, 'location') &&
+        ((c.city && c.city.toLowerCase().includes(loc)) ||
         (c.state && c.state.toLowerCase().includes(loc)) ||
-        (c.country && c.country.toLowerCase().includes(loc))
+        (c.country && c.country.toLowerCase().includes(loc)))
     );
   }
   if (minAge !== undefined || maxAge !== undefined) {
     candidateProfiles = candidateProfiles.filter((c) => {
+      if (!shown(c, 'age')) return false; // hidden age never matches an age filter
       const age = ageFromDateOfBirth(c.date_of_birth);
       if (age === null) return true; // include profiles without DOB
       if (minAge !== undefined && age < minAge) return false;
@@ -104,19 +106,19 @@ async function getRecommendations(userId, options = {}, trx) {
   if (education) {
     const edu = education.toLowerCase();
     candidateProfiles = candidateProfiles.filter(
-      (c) => c.education && c.education.toLowerCase().includes(edu)
+      (c) => shown(c, 'education') && c.education && c.education.toLowerCase().includes(edu)
     );
   }
   if (occupation) {
     const occ = occupation.toLowerCase();
     candidateProfiles = candidateProfiles.filter(
-      (c) => c.occupation && c.occupation.toLowerCase().includes(occ)
+      (c) => shown(c, 'occupation') && c.occupation && c.occupation.toLowerCase().includes(occ)
     );
   }
   if (lifestyle) {
     const ls = lifestyle.toLowerCase();
     candidateProfiles = candidateProfiles.filter(
-      (c) => c.lifestyle && c.lifestyle.toLowerCase().includes(ls)
+      (c) => shown(c, 'lifestyle') && c.lifestyle && c.lifestyle.toLowerCase().includes(ls)
     );
   }
 
@@ -154,9 +156,8 @@ async function getRecommendations(userId, options = {}, trx) {
             recommendationScore = (COMPATIBILITY_WEIGHT * comp.score) + (ML_WEIGHT * mlPrediction * 100);
           }
 
-          return {
+          return privacy.filter({
             userId: candidateId,
-            profile: formatCandidateProfile(candidate),
             compatibilityScore: comp.score,
             mlPrediction,
             recommendationScore,
@@ -164,7 +165,7 @@ async function getRecommendations(userId, options = {}, trx) {
             whyThisMatch: comp.whyThisMatch,
             scoreBreakdown: comp.scoreBreakdown,
             mlFeatures,
-          };
+          }, candidate);
       } catch {
         // Skip candidates for which compatibility calculation fails
         return null;
@@ -225,6 +226,12 @@ async function getMatchDetails(userId, targetUserId, trx) {
     throw ApiError.notFound('Profile not found or account is inactive');
   }
 
+  // Privacy (Phase 13): a profile shared with connections only is not accessible to others.
+  const privacy = await privacyService.recommendationContext(userId, [targetUserId], trx);
+  if (!privacy.visible(targetUserId)) {
+    throw ApiError.forbidden('This profile is not accessible');
+  }
+
   // Phase 7 compatibility — stores/updates the result in `matches`
   const comp = await matchingService.calculateCompatibility(userId, targetUserId, trx);
 
@@ -246,9 +253,8 @@ async function getMatchDetails(userId, targetUserId, trx) {
     recommendationScore = (COMPATIBILITY_WEIGHT * comp.score) + (ML_WEIGHT * mlPrediction * 100);
   }
 
-  return {
+  return privacy.filter({
     userId: targetUserId,
-    profile: formatCandidateProfile(candidate),
     compatibilityScore: comp.score,
     mlPrediction,
     recommendationScore,
@@ -256,7 +262,7 @@ async function getMatchDetails(userId, targetUserId, trx) {
     whyThisMatch: comp.whyThisMatch,
     scoreBreakdown: comp.scoreBreakdown,
     mlFeatures,
-  };
+  }, candidate);
 }
 
 module.exports = {

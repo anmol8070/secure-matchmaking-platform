@@ -7,6 +7,7 @@
  *     → completeLoginVerification → JWT (the ONLY place access tokens are issued)
  */
 const { getDb } = require('../config/database');
+const config = require('../config/environment');
 const User = require('../models/userModel');
 const ApiError = require('../utils/ApiError');
 const HTTP = require('../constants/httpStatus');
@@ -15,6 +16,7 @@ const { parseIdentifier, maskContact } = require('../utils/contact');
 const otpService = require('./otpService');
 const verificationService = require('./verificationService');
 const sessionService = require('./sessionService');
+const realtime = require('../sockets/realtime');
 
 const MESSAGES = Object.freeze({
   INVALID_CREDENTIALS: 'Invalid credentials',
@@ -88,11 +90,15 @@ async function verifyAccountOtp({ otp, ...contact }) {
 
 /* ---------------- Login: step 1 (credentials or OTP) ---------------- */
 
-function verificationChallenge(verification) {
+async function verificationChallenge(user, verification) {
+  const profile = await getDb()('profiles').select('profile_photo_url').where({ user_id: user.user_id }).first();
   return {
     requires_live_verification: true,
     verification_token: verification.token,
     verification_expires_in: verification.expiresIn,
+    // Tells the browser whether to keep the captured frame as a first profile
+    // picture. It is not a face comparison and it is not an image.
+    has_profile_photo: Boolean(profile && profile.profile_photo_url),
   };
 }
 
@@ -115,7 +121,7 @@ async function loginWithPassword({ identifier, password }, { requiredRole } = {}
   if (requiredRole && user.role !== requiredRole) throw ApiError.unauthorized(MESSAGES.INVALID_CREDENTIALS);
 
   assertCanLogin(user);
-  return verificationChallenge(await verificationService.startVerification(user, 'password'));
+  return verificationChallenge(user, await verificationService.startVerification(user, 'password'));
 }
 
 async function sendLoginOtp({ identifier }) {
@@ -140,7 +146,7 @@ async function verifyLoginOtp({ identifier, otp }) {
 
   await otpService.verifyOtp({ userId: user.user_id, purpose: 'login', channel: parsed.channel, code: otp });
   assertCanLogin(user);
-  return verificationChallenge(await verificationService.startVerification(user, 'otp'));
+  return verificationChallenge(user, await verificationService.startVerification(user, 'otp'));
 }
 
 /* ---------------- Login: step 2 (live presence) → final session ---------------- */
@@ -174,6 +180,8 @@ async function completeLoginVerification({ verification_token: token, ...detecti
 
 async function logout(sessionId) {
   await sessionService.revokeSession(sessionId);
+  // Chat sockets opened with this session close immediately (Phase 11).
+  realtime.disconnectSession(sessionId);
 }
 
 function getCurrentUser(user) {

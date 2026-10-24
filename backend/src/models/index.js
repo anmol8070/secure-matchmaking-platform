@@ -16,4 +16,7 @@ module.exports = {
   OtpCode: require('./otpCodeModel'),
   UserSession: require('./userSessionModel'),
   MlModel: require('./mlModel'),
+  VideoCall: require('./videoCallModel'),
+  PrivacySetting: require('./privacySettingModel'),
+  AdminAuditLog: require('./adminAuditLogModel'),
 };

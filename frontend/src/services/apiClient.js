@@ -4,7 +4,11 @@
  *
  * Requests made with { auth: true } carry the access token. A 401 on such a
  * request means the session is no longer valid; the registered handler
- * (AuthContext) moves the app to the "session expired" state.
+ * (AuthContext) moves the app to the "session expired" state. A 403 is not a
+ * session problem (the action is not allowed: blocked user, not an admin…),
+ * so it is only thrown for the page to show.
+ *
+ * { params } is turned into a query string.
  */
 import { API_BASE_URL } from '../utils/constants.js';
 import { tokenStore } from './tokenStore.js';
@@ -28,14 +32,22 @@ export function onUnauthorized(handler) {
   };
 }
 
-export async function request(path, { method = 'GET', body, headers, auth = false, ...rest } = {}) {
+/** "?a=1&b=x" from an object; empty, null and undefined values are left out. */
+export function toQueryString(params = {}) {
+  const search = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  ).toString();
+  return search ? `?${search}` : '';
+}
+
+export async function request(path, { method = 'GET', body, headers, auth = false, params, ...rest } = {}) {
   const token = auth ? tokenStore.get() : null;
   // FormData (file uploads) is sent as multipart; the browser sets the boundary header.
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
 
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${API_BASE_URL}${path}${params ? toQueryString(params) : ''}`, {
       method,
       headers: {
         Accept: 'application/json',
@@ -58,6 +70,25 @@ export async function request(path, { method = 'GET', body, headers, auth = fals
     throw new ApiRequestError(data?.message || response.statusText, response.status, data);
   }
   return data;
+}
+
+/**
+ * Authenticated binary download (e.g. private chat images). <img src> cannot
+ * send the Bearer token, so callers turn the Blob into an object URL.
+ */
+export async function fetchBlob(path) {
+  const token = tokenStore.get();
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  } catch {
+    throw new ApiRequestError('Cannot reach the server. Check your connection and try again.', 0, null);
+  }
+  if (!response.ok) {
+    if (response.status === 401 && unauthorizedHandler) unauthorizedHandler();
+    throw new ApiRequestError(response.statusText || 'Request failed', response.status, null);
+  }
+  return response.blob();
 }
 
 export const apiClient = {

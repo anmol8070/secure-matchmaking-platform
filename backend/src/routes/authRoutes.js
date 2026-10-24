@@ -13,6 +13,13 @@ const { authLimiter, failedAttemptLimiter } = require('../middleware/rateLimiter
 
 const router = Router();
 
+// Authenticated (a valid access token is required, so these are not part of
+// the anti-brute-force budget: every page load calls /me, and counting it
+// would sign out users who browse a lot or share an IP).
+router.post('/logout', requireAuth, auth.logout);
+router.get('/me', requireAuth, auth.getCurrentUser);
+
+// Credential and OTP endpoints: per-IP request budget.
 router.use(authLimiter);
 
 // Registration and account verification
@@ -38,8 +45,5 @@ router.post(
   auth.completeLoginVerification
 );
 
-// Authenticated
-router.post('/logout', requireAuth, auth.logout);
-router.get('/me', requireAuth, auth.getCurrentUser);
 
 module.exports = router;
