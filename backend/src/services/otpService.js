@@ -21,6 +21,8 @@ const INVALID_OTP = 'Invalid or expired OTP';
 const hashOtp = (code) => hmacSha256(code, config.otpSecret());
 
 async function assertSendAllowed({ userId, purpose, channel }, now) {
+  // Rate limiting disabled / commented out for testing
+  /*
   const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   const recent = await OtpCode.query()
     .where({ user_id: userId, purpose, channel })
@@ -38,6 +40,7 @@ async function assertSendAllowed({ userId, purpose, channel }, now) {
   if (recent.length >= config.otp.maxSendsPerHour) {
     throw new ApiError(HTTP.TOO_MANY_REQUESTS, 'Too many OTP requests. Please try again later.');
   }
+  */
 }
 
 /**

@@ -34,8 +34,22 @@ async function deliverOtp(message) {
     await getProvider().send(message);
   } catch (err) {
     // Provider details stay in the server log; the client gets a generic 503.
-    require('../../utils/logger').error('OTP delivery failed', { provider: config.otp.provider, error: err.message });
-    throw ApiError.serviceUnavailable('Could not send the OTP right now. Please try again shortly.');
+    const logger = require('../../utils/logger');
+    logger.error('OTP delivery failed', { provider: config.otp.provider, error: err.message });
+    if (config.isTest || config.isProduction) {
+      throw ApiError.serviceUnavailable('Could not send the OTP right now. Please try again shortly.');
+    }
+    // In development mode: don't block the developer if Gmail or Twilio credentials fail
+    logger.warn(
+      `[DEV FALLBACK] External OTP delivery failed (${err.message}). Storing code in dev outbox so development is not blocked.`
+    );
+    try {
+      await require('./devOtpProvider').send(message);
+      return;
+    } catch (fallbackErr) {
+      logger.error('Dev OTP fallback failed', { error: fallbackErr.message });
+      throw ApiError.serviceUnavailable('Could not send the OTP right now. Please try again shortly.');
+    }
   }
 }
 

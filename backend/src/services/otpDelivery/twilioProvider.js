@@ -77,11 +77,17 @@ async function send({ channel, destination, code, purpose }) {
           logger.info(`[Twilio OTP] Sent ${purpose} SMS to ${maskContact('mobile', destination)}`);
           resolve({ delivered: true });
         } else {
+          let errorMsg = `Twilio API returned status ${res.statusCode}`;
+          try {
+            const parsed = JSON.parse(rawData);
+            if (parsed.message) errorMsg += `: ${parsed.message} (code ${parsed.code})`;
+          } catch {}
           logger.error('Twilio SMS delivery rejected by API', {
             statusCode: res.statusCode,
             destination: maskContact('mobile', destination),
+            details: errorMsg,
           });
-          reject(new Error(`Twilio API returned status ${res.statusCode}`));
+          reject(new Error(errorMsg));
         }
       });
     });

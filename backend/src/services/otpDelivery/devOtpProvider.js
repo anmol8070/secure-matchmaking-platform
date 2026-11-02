@@ -17,7 +17,7 @@ const outbox = new Map();
 
 async function send({ channel, destination, code, purpose, expiresAt }) {
   outbox.set(destination, { channel, purpose, code, expiresAt, sentAt: new Date() });
-  logger.info(`[dev OTP] ${purpose} code for ${maskContact(channel, destination)} is in the dev outbox`);
+  logger.info(`[dev OTP] ${purpose} code for ${maskContact(channel, destination)}: ${code}`);
 }
 
 /** Latest message for a destination (development tooling and tests only). */
