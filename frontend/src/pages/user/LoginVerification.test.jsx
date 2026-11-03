@@ -12,6 +12,13 @@ import { VERIFICATION_MESSAGES, markerEllipse, nextGuideStep } from './LoginVeri
 const detector = vi.hoisted(() => ({ detectFaces: vi.fn(), preloadFaceDetector: vi.fn(() => Promise.resolve()) }));
 vi.mock('../../services/faceDetectionService.js', () => detector);
 
+const matcher = vi.hoisted(() => ({
+  preloadFaceMatcher: vi.fn(() => Promise.resolve()),
+  loadProfileDescriptor: vi.fn(() => Promise.resolve(new Float32Array(128))),
+  matchLiveToDescriptor: vi.fn(() => Promise.resolve({ matched: true, distance: 0.2, matcher: 'test' })),
+}));
+vi.mock('../../services/faceMatchService.js', () => matcher);
+
 const location = () => screen.getByTestId('location').textContent;
 
 const stopTrack = vi.fn();
@@ -62,6 +69,11 @@ function mockLivePerson(extra = {}) {
 beforeEach(() => {
   setCamera(vi.fn(() => Promise.resolve(fakeStream())));
   detector.detectFaces.mockReset();
+  matcher.preloadFaceMatcher.mockClear();
+  matcher.loadProfileDescriptor.mockReset();
+  matcher.loadProfileDescriptor.mockResolvedValue(new Float32Array(128));
+  matcher.matchLiveToDescriptor.mockReset();
+  matcher.matchLiveToDescriptor.mockResolvedValue({ matched: true, distance: 0.2, matcher: 'test' });
   stopTrack.mockClear();
 });
 
@@ -213,24 +225,86 @@ describe('face detection outcomes', () => {
     expect(sessionStorage.getItem('mm.accessToken')).toBeNull();
   });
 
-  it('does not send a profile-match flag, even when the account already has a photo', async () => {
+  it('matches the live face to the profile picture and does not re-upload it', async () => {
     const api = await reachVerification({
       'POST /auth/login': {
         ...CHALLENGE,
         body: {
           ...CHALLENGE.body,
-          data: { ...CHALLENGE.body.data, has_profile_photo: true },
+          data: {
+            ...CHALLENGE.body.data,
+            has_profile_photo: true,
+            profile_photo_url: 'http://localhost:5000/media/profile-photos/test.webp?exp=1&sig=abc',
+          },
         },
       },
       'POST /auth/login-verification/complete': SUCCESS(USER),
     });
     mockLivePerson({ confidence: 0.96, detector: 'mediapipe-blazeface-short-range' });
 
-    await waitFor(() => expect(location()).toBe('/dashboard'), { timeout: 3000 });
+    await waitFor(() => expect(location()).toBe('/dashboard'), { timeout: 4000 });
+    expect(matcher.loadProfileDescriptor).toHaveBeenCalled();
+    expect(matcher.matchLiveToDescriptor).toHaveBeenCalled();
     const body = api.callsTo('POST', '/auth/login-verification/complete')[0].body;
     expect(body.face_count).toBe(1);
-    expect(body.profile_matched).toBeUndefined();
+    expect(body.profile_matched).toBe(true);
     expect(api.callsTo('PUT', '/profile/photo')).toHaveLength(0);
+  });
+
+  it('freezes the capture and shows a mismatch message on screen when faces do not match', async () => {
+    matcher.matchLiveToDescriptor.mockResolvedValue({ matched: false, distance: 0.9, matcher: 'test' });
+    const api = await reachVerification({
+      'POST /auth/login': {
+        ...CHALLENGE,
+        body: {
+          ...CHALLENGE.body,
+          data: {
+            ...CHALLENGE.body.data,
+            has_profile_photo: true,
+            profile_photo_url: 'http://localhost:5000/media/profile-photos/test.webp?exp=1&sig=abc',
+          },
+        },
+      },
+      'POST /auth/login-verification/complete': SUCCESS(USER),
+    });
+    mockLivePerson();
+
+    expect(await screen.findByTestId('mismatch-overlay')).toHaveTextContent(VERIFICATION_MESSAGES.mismatch);
+    expect(screen.getByText(VERIFICATION_MESSAGES.mismatchHint)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(api.callsTo('POST', '/auth/login-verification/complete')).toHaveLength(0);
+    expect(location()).toBe('/login-verification');
+  });
+
+  it('saves the live capture as the profile picture when the account has none', async () => {
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = (callback) => {
+      callback(new Blob(['jpeg'], { type: 'image/jpeg' }));
+    };
+    const api = await reachVerification({
+      'POST /auth/login-verification/complete': SUCCESS(USER),
+      'PUT /profile/photo': { status: 200, body: { success: true, message: 'Profile picture updated.', data: {} } },
+    });
+    mockLivePerson();
+
+    await waitFor(() => expect(location()).toBe('/dashboard'), { timeout: 4000 });
+    expect(api.callsTo('PUT', '/profile/photo')[0].body).toBeInstanceOf(FormData);
+    HTMLCanvasElement.prototype.toBlob = original;
+  });
+
+  it('opens profile create with the capture when upload needs a profile first', async () => {
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = (callback) => {
+      callback(new Blob(['jpeg'], { type: 'image/jpeg' }));
+    };
+    await reachVerification({
+      'POST /auth/login-verification/complete': SUCCESS(USER),
+      'PUT /profile/photo': { status: 404, body: { success: false, message: 'Create a profile before uploading a picture.' } },
+    });
+    mockLivePerson();
+
+    await waitFor(() => expect(location()).toBe('/profile/create'), { timeout: 4000 });
+    HTMLCanvasElement.prototype.toBlob = original;
   });
 
   it('reports a detector loading failure and allows another try', async () => {

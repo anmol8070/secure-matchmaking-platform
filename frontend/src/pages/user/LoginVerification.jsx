@@ -1,15 +1,13 @@
 /**
- * Login step 2 — live human/face PRESENCE verification.
+ * Login step 2 — live camera verification.
  *
- *   camera permission → live preview with a face marker → automatic capture
- *     0 faces  → "Move your face into the marker."
- *     2+ faces → "Multiple faces detected. …"
- *     1 live face inside the marker → send the RESULT (not the image) → dashboard
+ *   camera → one face in the marker →
+ *     no profile picture yet → capture is saved as the profile picture after sign-in
+ *     profile picture exists → live face must match that picture, then sign-in
  *
- * The captured frame is not sent as proof of identity. If the account has no
- * profile picture yet, the frame can be saved as that picture after sign-in.
- * A profile picture is not compared with the live frame: the server never
- * receives the image, so a browser-side comparison would not be a security check.
+ * Presence uses MediaPipe. Matching uses face-api descriptors against the
+ * signed profile photo URL from the login challenge. The server still requires
+ * profile_matched when the account already has a photo.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -17,21 +15,33 @@ import Alert from '../../components/common/Alert.jsx';
 import useAuth from '../../hooks/useAuth.js';
 import useCamera from '../../hooks/useCamera.js';
 import { detectFaces, preloadFaceDetector } from '../../services/faceDetectionService.js';
+import {
+  loadProfileDescriptor,
+  matchLiveToDescriptor,
+  preloadFaceMatcher,
+} from '../../services/faceMatchService.js';
 import { profileService } from '../../services/profileService.js';
 import { rememberVerificationPhoto } from '../../services/pendingProfilePhoto.js';
 import { landingPath } from '../../routes/returnPath.js';
+import { USER_PATHS } from '../../routes/paths.js';
 
 export const VERIFICATION_MESSAGES = Object.freeze({
   noFace: 'No face detected. Move your face into the marker.',
   centerFace: 'Move your face into the center of the marker.',
   moveCloser: 'Move closer until your face fills the marker.',
   holdStill: 'Face is in the marker. Hold still while the photo is taken.',
+  matching: 'Checking your face against your profile picture…',
   onePerson: 'Only one person can be in the marker.',
   multipleFaces: 'Multiple faces detected. Please ensure only one person is visible.',
   stillPhoto: 'A still photo cannot be used. Look at the camera and move your head slightly.',
+  mismatch: 'Face does not match your profile picture.',
+  mismatchHint: 'The captured photo does not match your saved profile picture. Try again.',
   detectorFailed: 'Face detection could not be loaded. Check your internet connection and try again.',
+  matcherFailed: 'Face matching could not be loaded. Check your internet connection and try again.',
+  profileLoadFailed: 'Could not load your profile picture for verification. Please try logging in again.',
   sessionExpired: 'Your verification session has expired. Please log in again.',
   verifying: 'Verifying…',
+  savingPhoto: 'Saving your profile picture…',
 });
 
 const SCAN_INTERVAL_MS = 280;
@@ -136,14 +146,20 @@ function LoginVerification() {
   const { verification, startLiveVerification, completeLiveVerification, abandonVerification } = useAuth();
   const camera = useCamera();
   const canvasRef = useRef(null);
-  const phaseRef = useRef('camera'); // camera | submitting
+  const phaseRef = useRef('camera'); // camera | submitting | mismatch
   const previousRef = useRef(null);
   const stillCountRef = useRef(0);
   const scanLock = useRef(false);
   const sessionRef = useRef({});
+  const profileDescriptorRef = useRef(null);
   const [guide, setGuide] = useState('empty');
   const [hint, setHint] = useState(VERIFICATION_MESSAGES.noFace);
   const [message, setMessage] = useState('');
+  const [frozen, setFrozen] = useState(false);
+  const [scanEpoch, setScanEpoch] = useState(0);
+  const [matchReady, setMatchReady] = useState(() => !verification?.hasProfilePhoto);
+
+  const needsMatch = Boolean(verification?.hasProfilePhoto);
 
   sessionRef.current = {
     completeLiveVerification,
@@ -151,16 +167,64 @@ function LoginVerification() {
     navigate,
     returnTo: verification?.returnTo,
     stop: camera.stop,
-    hasProfilePhoto: Boolean(verification?.hasProfilePhoto),
+    hasProfilePhoto: needsMatch,
+    profilePhotoUrl: verification?.profilePhotoUrl || null,
   };
 
-  // Open the camera as soon as the page loads, and fetch the model in parallel.
+  const resumeAfterMismatch = () => {
+    const canvas = canvasRef.current;
+    canvas?.getContext('2d')?.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+    setFrozen(false);
+    setMessage('');
+    setGuide('empty');
+    setHint(VERIFICATION_MESSAGES.noFace);
+    previousRef.current = null;
+    stillCountRef.current = 0;
+    phaseRef.current = 'camera';
+    setScanEpoch((n) => n + 1);
+  };
+
+  // Open the camera as soon as the page loads, and fetch models in parallel.
   useEffect(() => {
     startLiveVerification();
     camera.start();
     preloadFaceDetector().catch(() => {});
+    if (needsMatch) preloadFaceMatcher().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load the saved profile face once so later frames can be compared quickly.
+  useEffect(() => {
+    if (!needsMatch) {
+      setMatchReady(true);
+      return undefined;
+    }
+    let cancelled = false;
+    const url = verification?.profilePhotoUrl;
+    if (!url) {
+      setMessage(VERIFICATION_MESSAGES.profileLoadFailed);
+      setMatchReady(false);
+      return undefined;
+    }
+    setMatchReady(false);
+    preloadFaceMatcher()
+      .then(() => loadProfileDescriptor(url))
+      .then((descriptor) => {
+        if (cancelled) return;
+        profileDescriptorRef.current = descriptor;
+        setMatchReady(true);
+        setMessage('');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        profileDescriptorRef.current = null;
+        setMatchReady(false);
+        setMessage(err?.message?.includes('No face found') ? err.message : VERIFICATION_MESSAGES.matcherFailed);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsMatch, verification?.profilePhotoUrl]);
 
   const clearCapture = () => {
     const canvas = canvasRef.current;
@@ -221,7 +285,12 @@ function LoginVerification() {
     stillCountRef.current = step.stillCount;
     setGuide(step.guide);
     setHint(step.hint);
-    setMessage(step.message);
+    // Keep a mismatch notice until the next capture/match attempt replaces it.
+    setMessage((current) => {
+      if (step.message) return step.message;
+      if (current === VERIFICATION_MESSAGES.mismatch) return current;
+      return '';
+    });
   };
 
   const frameFile = (canvas) => {
@@ -233,7 +302,7 @@ function LoginVerification() {
     });
   };
 
-  const finish = async (detection, portrait) => {
+  const finish = async (detection, portrait, profileMatched) => {
     if (phaseRef.current !== 'camera') return;
     phaseRef.current = 'submitting';
     setGuide('ok');
@@ -241,25 +310,38 @@ function LoginVerification() {
     setMessage('');
     const session = sessionRef.current;
     try {
-      const user = await session.completeLiveVerification(detection);
+      const user = await session.completeLiveVerification({
+        ...detection,
+        ...(typeof profileMatched === 'boolean' && { profileMatched }),
+      });
+
+      // First login with no profile picture: save this live capture as the profile photo.
+      let goToProfileCreate = false;
       if (portrait && !session.hasProfilePhoto) {
+        setHint(VERIFICATION_MESSAGES.savingPhoto);
         try {
           await profileService.uploadPhoto(portrait);
         } catch {
-          // No profile yet, or the upload failed. Keep the photo for profile setup.
+          // Profile row may not exist yet — keep the capture and finish profile setup.
           rememberVerificationPhoto(portrait);
+          goToProfileCreate = user?.role !== 'admin';
         }
       }
+
       session.stop();
+      if (goToProfileCreate) {
+        session.navigate(USER_PATHS.PROFILE_CREATE, { replace: true });
+        return;
+      }
       session.navigate(landingPath(user, session.returnTo), { replace: true });
     } catch (err) {
       if (err.status === 422) {
-        phaseRef.current = 'camera';
-        previousRef.current = null;
-        stillCountRef.current = 0;
+        // Server rejected match/presence — freeze this capture and show the reason on it.
+        phaseRef.current = 'mismatch';
+        setFrozen(true);
         setGuide('bad');
-        setHint(VERIFICATION_MESSAGES.centerFace);
-        setMessage(err.message);
+        setHint(VERIFICATION_MESSAGES.mismatch);
+        setMessage(err.message || VERIFICATION_MESSAGES.mismatchHint);
         return;
       }
       session.stop();
@@ -270,7 +352,7 @@ function LoginVerification() {
   // Keep sampling the live preview. Capture happens only when one face is
   // inside the marker and has moved since the previous sample.
   useEffect(() => {
-    if (camera.status !== 'streaming') return undefined;
+    if (camera.status !== 'streaming' || !matchReady) return undefined;
     let cancelled = false;
     let timer = 0;
     previousRef.current = null;
@@ -298,7 +380,25 @@ function LoginVerification() {
         const step = nextGuideStep(previousRef.current, detection, space.ellipse, stillCountRef.current);
         if (cancelled || phaseRef.current !== 'camera') return;
         if (step.type === 'pass') {
-          const portrait = sessionRef.current.hasProfilePhoto ? null : await frameFile(canvasRef.current);
+          const session = sessionRef.current;
+          if (session.hasProfilePhoto) {
+            setHint(VERIFICATION_MESSAGES.matching);
+            const result = await matchLiveToDescriptor(canvasRef.current, profileDescriptorRef.current);
+            if (cancelled || phaseRef.current !== 'camera') return;
+            if (!result.matched) {
+              // Keep the captured frame on screen and show the mismatch on that screenshot.
+              phaseRef.current = 'mismatch';
+              setFrozen(true);
+              setGuide('bad');
+              setHint(VERIFICATION_MESSAGES.mismatch);
+              setMessage(VERIFICATION_MESSAGES.mismatchHint);
+              return;
+            }
+            await finish(frame.detection, null, true);
+            return;
+          }
+          // No profile picture yet — this live frame becomes the profile picture after sign-in.
+          const portrait = await frameFile(canvasRef.current);
           if (cancelled || phaseRef.current !== 'camera') return;
           await finish(frame.detection, portrait);
           return;
@@ -323,23 +423,22 @@ function LoginVerification() {
     };
     // readFrame and finish close over refs that stay current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera.status]);
+  }, [camera.status, matchReady, scanEpoch]);
 
   const streaming = camera.status === 'streaming';
+  const blurb = needsMatch
+    ? 'Center your face in the marker. Your live photo is checked against your saved profile picture before you can sign in. You can change that picture later from your profile.'
+    : 'Center your face in the marker. This first live photo is saved as your profile picture. Later logins will verify your face against it.';
 
   return (
     <section className="card card--narrow">
       <h1>Live verification</h1>
-      <p className="muted">
-        Center your face in the marker. The photo is taken automatically. This checks that one face is
-        present. It does not compare you with your profile picture. If you have no profile picture yet,
-        this photo is saved as your profile picture.
-      </p>
+      <p className="muted">{blurb}</p>
 
       <Alert type="error">{camera.errorMessage}</Alert>
-      <Alert type="error">{message}</Alert>
+      {!frozen && <Alert type="error">{message}</Alert>}
 
-      <div className="camera">
+      <div className={`camera${frozen ? ' camera--frozen' : ''}`}>
         <video
           ref={camera.videoRef}
           className="camera__video"
@@ -347,11 +446,23 @@ function LoginVerification() {
           playsInline
           muted
           aria-label="Live camera preview"
-          hidden={!streaming}
+          hidden={!streaming || frozen}
         />
-        {streaming && (
+        <canvas
+          ref={canvasRef}
+          className="camera__video camera__freeze"
+          hidden={!frozen}
+          aria-label={frozen ? 'Captured verification photo' : undefined}
+        />
+        {streaming && !frozen && (
           <div className="camera__guide" data-state={guide} data-testid="face-marker" aria-hidden="true">
             <span className="camera__marker" />
+          </div>
+        )}
+        {frozen && (
+          <div className="camera__mismatch" role="alert" data-testid="mismatch-overlay">
+            <strong>{VERIFICATION_MESSAGES.mismatch}</strong>
+            <span>{message || VERIFICATION_MESSAGES.mismatchHint}</span>
           </div>
         )}
         {camera.status === 'requesting' && (
@@ -359,13 +470,23 @@ function LoginVerification() {
             Waiting for camera permission…
           </p>
         )}
-        {streaming && (
+        {streaming && needsMatch && !matchReady && !message && !frozen && (
+          <p className="muted" role="status">
+            Loading your profile picture for face matching…
+          </p>
+        )}
+        {streaming && matchReady && !frozen && (
           <p className="camera__status" role="status">
             {hint}
           </p>
         )}
-        <canvas ref={canvasRef} hidden />
       </div>
+
+      {frozen && (
+        <button type="button" className="btn btn--primary btn--block" onClick={resumeAfterMismatch}>
+          Try again
+        </button>
+      )}
 
       {camera.status === 'error' && (
         <button type="button" className="btn btn--primary btn--block" onClick={camera.start}>

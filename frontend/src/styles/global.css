@@ -1364,7 +1364,9 @@ button.btn--link:hover:not(:disabled) {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 220px;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 440px;
   margin-bottom: 1rem;
   border-radius: var(--radius);
   background: #0b0619;
@@ -1374,7 +1376,7 @@ button.btn--link:hover:not(:disabled) {
 
 .camera__video {
   width: 100%;
-  max-height: 380px;
+  height: 100%;
   object-fit: cover;
   transform: scaleX(-1); /* mirror preview like a selfie camera */
 }
@@ -1446,6 +1448,44 @@ button.btn--link:hover:not(:disabled) {
   font-weight: 650;
   text-align: center;
   background: rgba(11, 6, 25, 0.78);
+}
+
+.camera__freeze {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.camera--frozen {
+  box-shadow: inset 0 0 0 2px var(--color-danger);
+}
+
+.camera__mismatch {
+  position: absolute;
+  inset: auto 0.75rem 0.75rem;
+  z-index: 3;
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  color: #fff;
+  text-align: center;
+  background: rgba(127, 29, 29, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.camera__mismatch strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.camera__mismatch span {
+  font-size: 0.92rem;
+  line-height: 1.35;
+  opacity: 0.95;
 }
 
 .camera .muted {

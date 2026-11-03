@@ -44,7 +44,7 @@ PostgreSQL or MySQL/MariaDB
 
 React components contain only presentation logic, and all API access goes through `frontend/src/services`.
 
-Matching and recommendation logic lives only in backend services. Login verification checks that one face is in the camera marker for that login attempt. The server does not compare the frame with the profile picture and does not accept a client boolean as identity evidence. If the account has no profile picture, the captured frame can be saved as that picture after sign-in.
+Matching and recommendation logic lives only in backend services. Login verification checks that one face is in the camera marker. On the first login with no profile picture, that live frame is saved as the profile picture. On later logins the browser matches the live face to that picture and the server requires a successful match flag when a photo already exists. Users can update the profile picture anytime from their profile.
 
 The full backend design is in **[backend/docs/api-architecture.md](backend/docs/api-architecture.md)**.
 

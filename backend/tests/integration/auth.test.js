@@ -297,6 +297,7 @@ describe('login (step 1: credentials)', () => {
         verification_token: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
         verification_expires_in: config.loginVerification.expiryMinutes * 60,
         has_profile_photo: false,
+        profile_photo_url: null,
       },
     });
     expect(res.body.data.access_token).toBeUndefined();
@@ -425,17 +426,19 @@ describe('live human/face presence verification (step 2)', () => {
     });
     expect(res.body.data.user.password_hash).toBeUndefined();
 
-    // Only the detector outcome is stored — no image or biometric data.
+    // Presence outcome is stored — no image payload. First login enrolls the photo client-side.
     const row = await db('login_verifications').where({ user_id: userId }).first();
     const result = typeof row.detection_result === 'string' ? JSON.parse(row.detection_result) : row.detection_result;
     expect(row.verification_status).toBe('passed');
     expect(result).toEqual({
       ...ONE_FACE,
       outcome: 'passed',
+      has_profile_photo: false,
       client_profile_flag_present: false,
+      profile_matched: false,
       face_presence_verified: true,
       biometric_identity_verified: false,
-      verification_mechanism: 'live_presence_session_challenge',
+      verification_mechanism: 'live_presence_enroll_profile_photo',
       attempted_at: expect.any(String),
     });
 
@@ -492,16 +495,17 @@ describe('live human/face presence verification (step 2)', () => {
     expect(await db('user_sessions').where({ user_id: userId }).first()).toBeUndefined();
   });
 
-  describe('client profile_matched flag is not a login decision', () => {
+  describe('profile picture enrollment vs match', () => {
     it.each([
-      ['no profile at all', null, false],
-      ['a profile without a picture', { profile_photo_url: null }, false],
-    ])('login verification passes with %s', async (label, profile, hasPhoto) => {
+      ['no profile at all', null],
+      ['a profile without a picture', { profile_photo_url: null }],
+    ])('login verification passes without profile_matched when %s', async (_label, profile) => {
       const { email, userId } = await registerAndVerify();
       if (profile) await db('profiles').insert({ user_id: userId, name: 'Test User', date_of_birth: '2000-01-01', ...profile });
 
       const login = await post('/auth/login', { identifier: email, password: PASSWORD });
-      expect(login.body.data.has_profile_photo).toBe(hasPhoto);
+      expect(login.body.data.has_profile_photo).toBe(false);
+      expect(login.body.data.profile_photo_url).toBeNull();
       const res = await post('/auth/login-verification/complete', {
         verification_token: login.body.data.verification_token,
         ...ONE_FACE,
@@ -509,29 +513,57 @@ describe('live human/face presence verification (step 2)', () => {
       expect(res.status).toBe(200);
     });
 
-    it.each([true, false])('forged profile_matched %s does not change a valid presence login', async (flag) => {
+    it('requires profile_matched true when a profile picture already exists', async () => {
       const { email, userId } = await registerAndVerify();
       await db('profiles').insert({
         user_id: userId,
         name: 'Test User',
         date_of_birth: '2000-01-01',
-        profile_photo_url: '/media/profile-photos/someone.webp',
+        profile_photo_url: '/media/profile-photos/11111111-1111-4111-8111-111111111111.webp',
       });
       const login = await post('/auth/login', { identifier: email, password: PASSWORD });
       expect(login.body.data.has_profile_photo).toBe(true);
-      expect(login.body.data.profile_photo_url).toBeUndefined();
+      expect(login.body.data.profile_photo_url).toEqual(expect.stringContaining('/media/profile-photos/'));
 
-      const res = await post('/auth/login-verification/complete', {
+      const denied = await post('/auth/login-verification/complete', {
         verification_token: login.body.data.verification_token,
         ...ONE_FACE,
-        profile_matched: flag,
+        profile_matched: false,
+      });
+      expect(denied.status).toBe(422);
+      expect(denied.body.message).toBe('Face does not match your profile picture. Please try again.');
+
+      const login2 = await post('/auth/login', { identifier: email, password: PASSWORD });
+      const res = await post('/auth/login-verification/complete', {
+        verification_token: login2.body.data.verification_token,
+        ...ONE_FACE,
+        profile_matched: true,
       });
       expect(res.status).toBe(200);
       const row = await db('login_verifications').where({ user_id: userId, verification_status: 'passed' }).first();
       const recorded = typeof row.detection_result === 'string' ? JSON.parse(row.detection_result) : row.detection_result;
-      expect(recorded.biometric_identity_verified).toBe(false);
-      expect(recorded.client_profile_flag_present).toBe(true);
-      expect(recorded.profile_matched).toBeUndefined();
+      expect(recorded.biometric_identity_verified).toBe(true);
+      expect(recorded.profile_matched).toBe(true);
+      expect(recorded.verification_mechanism).toBe('live_presence_and_profile_match_challenge');
+    });
+
+    it('does not let profile_matched true bypass a failed presence check', async () => {
+      const { email, userId } = await registerAndVerify();
+      await db('profiles').insert({
+        user_id: userId,
+        name: 'Test User',
+        date_of_birth: '2000-01-01',
+        profile_photo_url: '/media/profile-photos/11111111-1111-4111-8111-111111111111.webp',
+      });
+      const login = await post('/auth/login', { identifier: email, password: PASSWORD });
+      const res = await post('/auth/login-verification/complete', {
+        verification_token: login.body.data.verification_token,
+        face_detected: false,
+        face_count: 0,
+        profile_matched: true,
+      });
+      expect(res.status).toBe(422);
+      expect(res.body.message).toBe('No face detected. Please take the photo again.');
     });
   });
 });

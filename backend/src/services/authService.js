@@ -1,9 +1,10 @@
 /**
  * Authentication: registration, account OTP verification, password/OTP login,
- * live presence verification hand-off, final session, logout, current user.
+ * live camera verification hand-off, final session, logout, current user.
  *
  *   register → OTP → verify-otp → account active
- *   login (password | OTP) → verification token → live presence check
+ *   login (password | OTP) → verification token → live camera check
+ *     (enroll profile photo on first login, match it on later logins)
  *     → completeLoginVerification → JWT (the ONLY place access tokens are issued)
  */
 const { getDb } = require('../config/database');
@@ -17,6 +18,7 @@ const otpService = require('./otpService');
 const verificationService = require('./verificationService');
 const sessionService = require('./sessionService');
 const realtime = require('../sockets/realtime');
+const { signProfilePhotoUrl } = require('./storage/photoSignature');
 
 const MESSAGES = Object.freeze({
   INVALID_CREDENTIALS: 'Invalid credentials',
@@ -92,13 +94,18 @@ async function verifyAccountOtp({ otp, ...contact }) {
 
 async function verificationChallenge(user, verification) {
   const profile = await getDb()('profiles').select('profile_photo_url').where({ user_id: user.user_id }).first();
+  const hasPhoto = Boolean(profile && profile.profile_photo_url);
+  const ttlSeconds = Math.max(60, verification.expiresIn || config.loginVerification.expiryMinutes * 60);
   return {
     requires_live_verification: true,
     verification_token: verification.token,
     verification_expires_in: verification.expiresIn,
-    // Tells the browser whether to keep the captured frame as a first profile
-    // picture. It is not a face comparison and it is not an image.
-    has_profile_photo: Boolean(profile && profile.profile_photo_url),
+    // First login: no photo yet → browser saves the capture as the profile picture.
+    // Later logins: signed URL so the browser can match the live face to that picture.
+    has_profile_photo: hasPhoto,
+    profile_photo_url: hasPhoto
+      ? signProfilePhotoUrl(profile.profile_photo_url, { expiresInSeconds: ttlSeconds })
+      : null,
   };
 }
 
