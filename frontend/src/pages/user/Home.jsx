@@ -25,14 +25,14 @@ const SAFETY = [
   { icon: 'lock', title: 'Connections first', text: 'Messages and video calls are only possible between members who have accepted each other’s connection request.' },
   { icon: 'close', title: 'Block anytime', text: 'Blocking removes the connection and stops messages, calls and recommendations between you both.' },
   { icon: 'flag', title: 'Report and review', text: 'Reports go to the moderation team, who can review the account and take action. Every admin decision is logged.' },
-  { icon: 'camera', title: 'A person at sign-in', text: 'The sign-in camera checks that one face is in the marker. It does not compare that face with your profile picture, and the photo is not stored as proof of identity.' },
+  { icon: 'camera', title: 'A person at sign-in', text: 'The first sign-in saves your live photo as your profile picture. Later sign-ins check your live face against that picture. You can update the picture anytime from your profile.' },
   { icon: 'video', title: 'Calls stay between you', text: 'Video calls connect your browsers directly (WebRTC) and are never recorded.' },
 ];
 
 const FAQ = [
   ['How is the compatibility score worked out?', 'It combines eight factors from both members’ profiles and preferences — location, age, education, occupation, lifestyle, food preference, shared hobbies and quiz answers. Every recommendation shows the breakdown, so you can see exactly where the number comes from.'],
   ['Does a recommendation model change my score?', 'No. When a recommendation model is in use it can change the order of your list, and the page says so. The percentage on each card is always the compatibility score.'],
-  ['Why do I need my camera to sign in?', 'After your password or one-time code, a short check looks for one face in the marker. It does not prove who you are, and it does not compare the picture with your profile photo. The photo itself is not sent or stored.'],
+  ['Why do I need my camera to sign in?', 'After your password or one-time code, the camera looks for one face in the marker. The first time, that photo becomes your profile picture. After that, each login compares your live face with the saved profile picture.'],
   ['Who can message me?', 'Only members you are connected with. You can block or report anyone from their profile, chat or call screen.'],
   ['Can I hide parts of my profile?', 'Yes. Each profile field has its own visibility, and you can limit your whole profile to your connections.'],
 ];
@@ -159,7 +159,7 @@ function Home() {
           <ul className="ticks reveal">
             <li>Name, age, location, education, occupation, lifestyle and an about-me</li>
             <li>Hobbies and a compatibility quiz that feed your recommendations</li>
-            <li>The sign-in camera looks for one face. It is not a comparison with your profile picture, and nothing from the camera is stored as identity evidence</li>
+            <li>The sign-in camera enrolls your first live photo as your profile picture, then matches later logins against it</li>
           </ul>
         </div>
       </section>

@@ -28,7 +28,7 @@ export const authService = {
 
   verifyLoginOtp: (identifier, otp) => apiClient.post('/auth/login/verify-otp', { identifier, otp }),
 
-  /** Sends ONLY the detection result — never the captured image. */
+  /** Sends ONLY the detection/match result — never the captured image. */
   completeLoginVerification: (verificationToken, detection) =>
     apiClient.post('/auth/login-verification/complete', {
       verification_token: verificationToken,
@@ -36,6 +36,7 @@ export const authService = {
       face_count: detection.faceCount,
       ...(detection.confidence !== undefined && { confidence: detection.confidence }),
       detector: detection.detector,
+      ...(typeof detection.profileMatched === 'boolean' && { profile_matched: detection.profileMatched }),
     }),
 
   me: () => apiClient.get('/auth/me', { auth: true }),

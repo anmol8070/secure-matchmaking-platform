@@ -33,17 +33,25 @@ describe('Login Verification Security - Face Presence Rules', () => {
 describe('Login Verification Security - Forged Verification Flags', () => {
   it('does not let a forged profile_matched true turn a failed presence check into a pass', () => {
     const presenceOutcome = evaluateDetection({ face_detected: false, face_count: 0 });
-    expect(applyProfileRule(presenceOutcome)).toBe('no_face');
+    expect(applyProfileRule(presenceOutcome, { hasProfilePhoto: true, profileMatched: true })).toBe('no_face');
   });
 
   it('does not let a forged profile_matched true hide multiple faces', () => {
     const presenceOutcome = evaluateDetection({ face_detected: true, face_count: 2 });
-    expect(applyProfileRule(presenceOutcome)).toBe('multiple_faces');
+    expect(applyProfileRule(presenceOutcome, { hasProfilePhoto: true, profileMatched: true })).toBe('multiple_faces');
   });
 
-  it('does not let a forged profile_matched false or true change a passed presence check', () => {
+  it('allows presence-only pass when the account has no profile picture yet (enrollment)', () => {
     const presenceOutcome = evaluateDetection({ face_detected: true, face_count: 1 });
-    expect(applyProfileRule(presenceOutcome)).toBe('passed');
+    expect(applyProfileRule(presenceOutcome, { hasProfilePhoto: false })).toBe('passed');
+    expect(applyProfileRule(presenceOutcome, { hasProfilePhoto: false, profileMatched: false })).toBe('passed');
+  });
+
+  it('requires profile_matched true when a profile picture already exists', () => {
+    const presenceOutcome = evaluateDetection({ face_detected: true, face_count: 1 });
+    expect(applyProfileRule(presenceOutcome, { hasProfilePhoto: true, profileMatched: true })).toBe('passed');
+    expect(applyProfileRule(presenceOutcome, { hasProfilePhoto: true, profileMatched: false })).toBe('profile_mismatch');
+    expect(applyProfileRule(presenceOutcome, { hasProfilePhoto: true })).toBe('profile_mismatch');
   });
 });
 
@@ -107,7 +115,7 @@ describe('Login Verification Security - Security Messages & Audit Rules', () => 
     expect(MESSAGES.INVALID_SESSION).toBe('Invalid or expired verification session. Please log in again.');
     expect(MESSAGES.NO_FACE).toBe('No face detected. Please take the photo again.');
     expect(MESSAGES.MULTIPLE_FACES).toBe('Multiple faces detected. Please ensure only one person is visible.');
+    expect(MESSAGES.PROFILE_MISMATCH).toBe('Face does not match your profile picture. Please try again.');
     expect(MESSAGES.TOO_MANY_ATTEMPTS).toBe('Too many verification attempts. Please log in again.');
-    expect(MESSAGES.MISMATCH).toBeUndefined();
   });
 });

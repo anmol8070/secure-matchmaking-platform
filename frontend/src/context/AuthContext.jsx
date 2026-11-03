@@ -22,6 +22,8 @@ const toVerification = (data, context, returnTo) => ({
   context,
   returnTo: returnTo || null,
   hasProfilePhoto: Boolean(data.has_profile_photo),
+  // Signed URL used only to compare the live face with the saved profile picture.
+  profilePhotoUrl: data.profile_photo_url || null,
 });
 
 export function AuthProvider({ children }) {

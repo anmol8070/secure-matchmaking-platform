@@ -103,7 +103,7 @@ describe('layered structure', () => {
     expect(offenders).toEqual(['config/database.js']);
   });
 
-  it('keeps profile pictures independent of login verification (Phase 5)', () => {
+  it('keeps profile upload services free of login-verification imports', () => {
     const profileSide = [
       'services/profileService.js',
       'services/profilePhotoService.js',
@@ -114,23 +114,20 @@ describe('layered structure', () => {
     for (const file of profileSide) {
       expect({ file, imports: read(file).match(/require([^)]*verification[^)]*)/gi) }).toEqual({ file, imports: null });
     }
-    for (const file of ['services/verificationService.js', 'services/authService.js', 'services/sessionService.js']) {
-      expect({ file, imports: read(file).match(/require\(([^)]*(profile|photo|storage)[^)]*)\)/gi) }).toEqual({ file, imports: null });
-    }
+    // authService may sign the profile photo URL for login face matching.
+    // verificationService may read profiles.profile_photo_url via knex only.
+    expect(read('services/sessionService.js').match(/require\(([^)]*(profile|photo|storage)[^)]*)\)/gi)).toBeNull();
   });
 
-  it('records presence only and does not treat a client flag as identity', () => {
+  it('never accepts camera images or embeddings in login verification', () => {
     const verification = read('services/verificationService.js');
     expect(verification).not.toMatch(/descriptor|embedding|imageBase64|photo_base64/i);
-    expect(verification).toMatch(/biometric_identity_verified: false/);
-    expect(verification).not.toMatch(/profile_photo_url/);
+    expect(verification).toMatch(/biometric_identity_verified/);
+    expect(verification).toMatch(/profile_mismatch/);
   });
 
-  it('keeps login verification independent of profiles and profile photos', () => {
-    const verification = read('services/verificationService.js');
+  it('keeps profileService free of verification imports', () => {
     const profile = read('services/profileService.js');
-
-    expect(verification).not.toMatch(/require\([^)]*profile/i);
     expect(profile).not.toMatch(/require\([^)]*verification/i);
   });
 });
